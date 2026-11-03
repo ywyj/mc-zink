@@ -1,6 +1,6 @@
 # 构建指南
 
-本文说明如何从源码构建 DSH-Zink 的三部分：Mesa（`opengl32.dll` 等）、Java mod、以及配置与部署。所有命令在 Windows PowerShell 下执行。
+本文说明如何从源码构建 mc-zink 的三部分：Mesa（`opengl32.dll` 等）、Java mod、以及配置与部署。所有命令在 Windows PowerShell 下执行。
 
 > 本仓库**不提供二进制**。构建需要自行准备工具链与 Mesa 源码，详见 [REPRODUCE.md](REPRODUCE.md)。
 
@@ -222,10 +222,10 @@ lite 版用于排查“问题是不是 mixin 注入导致的”，不含任何�
 
 ## 四、部署到游戏实例
 
-目标目录：`<MC目录>/versions/DSH-Zink/`（版本隔离实例）。
+目标目录：`<MC目录>/versions/mc-zink/`（版本隔离实例）。
 
 ```text
-<MC目录>/versions/DSH-Zink/
+<MC目录>/versions/mc-zink/
 ├── opengl32.dll          ← Mesa 产物（必需）
 ├── libEGL.dll            ← Mesa 产物
 ├── libGLESv2.dll         ← Mesa 产物
@@ -237,7 +237,7 @@ lite 版用于排查“问题是不是 mixin 注入导致的”，不含任何�
 步骤：
 
 1. 把三个 DLL 放到版本目录根部，与版本 jar 同级；
-2. 把 `cfgpack/config/` 下的模板复制到 `<MC目录>/versions/DSH-Zink/config/`（版本隔离实例的配置目录），再参考 `cfgpack/profiles/gpu-*.toml` 逐项调整；
+2. 把 `cfgpack/config/` 下的模板复制到 `<MC目录>/versions/mc-zink/config/`（版本隔离实例的配置目录），再参考 `cfgpack/profiles/gpu-*.toml` 逐项调整；
 3. 把构建好的 `zinkgl`、`zinkinfo`、`createopt` 以及自行获取的第三方 mod 放入 `mods/`；
 4. 确认启动器的工作目录是实例根目录——Windows 的 DLL 搜索顺序中，应用目录优先于系统目录，这是替换 `opengl32.dll` 的前提；
 5. 启动游戏，检查日志中的渲染器字符串与 zink 关键字。

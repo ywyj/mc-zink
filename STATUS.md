@@ -6,11 +6,11 @@
 ## 1. 用户终局目标（最新，m00593 + m00617 + 之前全部）
 - **转译后效果要「超过原生 Vulkan」，不只是追平**（m00593）。本质仍靠兼容层（zink/Mesa）达到或超过原生 Vulkan。
 - 双轨：(a) 提升 zink/兼容层运行效率（可 C++/Mesa 编译级、必要时重写底层 Java 渲染）；(b) 自研优化 mod：**兼容社区大量 mod**、别人 mod 更新能直接跟上、可加入很多新特性（m00617）。
-- 之前硬需求：全程 Vulkan 呈现（m00464）、1 万齿轮/传动杆/水车/发动机开光影百帧、机壳内齿轮降分辨率/完全包裹剔除（m00409）、吸收全部优化 mod 且 UI 与原版一致、超越后删原 jar（m00265/m00427/m00436）、30 系 MFG、FSR4/XeSS、光影适配 SR 消拖影、AMD/Intel/NVIDIA 全兼容、修泄漏、GPU↑CPU↓、全员并行、**改动只落 <MC目录>/versions/DSH-Zink**。
+- 之前硬需求：全程 Vulkan 呈现（m00464）、1 万齿轮/传动杆/水车/发动机开光影百帧、机壳内齿轮降分辨率/完全包裹剔除（m00409）、吸收全部优化 mod 且 UI 与原版一致、超越后删原 jar（m00265/m00427/m00436）、30 系 MFG、FSR4/XeSS、光影适配 SR 消拖影、AMD/Intel/NVIDIA 全兼容、修泄漏、GPU↑CPU↓、全员并行、**改动只落 <MC目录>/versions/mc-zink**。
 - 用户已入睡并授权 Lead 自行决策；提示**可能断电** → 一切关键状态必须增量落盘。
 
 ## 2. 实例当前 canonical 状态（已由 Lead 恢复，任何人不许再改）
-- 实例根：<MC目录>/versions/DSH-Zink（mods 65 jar）。
+- 实例根：<MC目录>/versions/mc-zink（mods 65 jar）。
 - **config/super_resolution/config.toml**：`[presentation] backend="OPENGL"`（黑屏修复！VULKAN 会触发 CaptureFrameRing 死锁→纯黑/白方块）、`upscale_algo="fsr1"`、`enable_upscale=true`、`upscale_ratio=1.5`、`enable_iris_extension=false`、`[frame_generation] mode="OFF"` provider="superresolution:auto"、`[low_latency] mode="superresolution:nv_reflex"`（nv_reflex ON）。
 - 已备份：canonical = <项目根目录>/_stage/sr_config_original.toml；01:36 被越权改坏的现场 = <项目根目录>/_stage/sr_config_asof_2026-10-19T0136.toml（backend=VULKAN/algo=dlss/provider=dlss_fg）。
 - config/iris.properties：enableShaders=false，shaderPack=ComplementaryReimagined_r5.9.3.zip。
@@ -29,7 +29,7 @@
 - 成员：zinkperf(task-1 zink A/B+兼容)、modcore(task-2 dshcore)、mfg(task-3 MFG)、shaders(task-4 光影/SR)、stability(task-5 稳定性 + task-9 SR VULKAN present)、packer(task-6 打包)、createlod(task-7 Create LOD)、mesaopt(task-8 Mesa 编译级)。
 - 任务板：team_task_list。已完成：task-6（packer v3.0.0 dist）。in_progress：其余。
 - 交付位置：zinkperf/ mfg/ shaders/ stability/ srfix/(task-9) dshcore/ createlod/ mesaopt/ cfgpack/，各自 REPORT.md。
-- 已交付关键产物：dshcore-1.0.0.jar（<项目根目录>/dshcore/build/，116,233B sha256 89a2007e…）；Opticores 修复 jar（<项目根目录>/stability/Opticores-1.1.0-dshfix+1.21.1.jar，99,687B sha256 4283729b…）；purescale jar（<项目根目录>/mfg/poc/purescale/purescale-neoforge-1.21.1.jar，458,986B sha256 57B8A960…）；mrpack v3.0.0（cfgpack/dist/DSH-Zink-300.mrpack 17,229,513B sha256 6b8d16e1…；-nvidia 85,996,515B sha256 639d5d29…）。
+- 已交付关键产物：dshcore-1.0.0.jar（<项目根目录>/dshcore/build/，116,233B sha256 89a2007e…）；Opticores 修复 jar（<项目根目录>/stability/Opticores-1.1.0-dshfix+1.21.1.jar，99,687B sha256 4283729b…）；purescale jar（<项目根目录>/mfg/poc/purescale/purescale-neoforge-1.21.1.jar，458,986B sha256 57B8A960…）；mrpack v3.0.0（cfgpack/dist/mc-zink-300.mrpack 17,229,513B sha256 6b8d16e1…；-nvidia 85,996,515B sha256 639d5d29…）。
 
 ## 5. 断电/重开会话恢复步骤
 1) 读本文件 + <项目根目录>/HANDOFF.md + <项目根目录>/_stage/TEAM_PROTOCOL.md。
@@ -153,5 +153,5 @@ agent=GLCOUNT 2.1.1（extra classloader bug 已修，sha 616e33be…），每帧
 - 三件修复件已装进实例并通过实机运行验证：dshcore-1.3.0、SR dshfix1（Vulkan present swapchain 可建）、Opticores dshfix（mixin 报错 0 条）。Mesa 缓存 DLL 无 fps 回归（noshader 204 vs 208）、首帧 -6s。
 - SR present backend A/B（n=28、cv~45%）：noshader OPENGL 198 / VULKAN 184；Complementary OPENGL 94 / VULKAN 106。差异在噪声内，VULKAN 呈现可用但无收益、启动慢 ~9s => 默认 OPENGL、VULKAN 作 opt-in。
 - SR 超分 FSR1 1.5x 本机近似中性；purescale FG 已在前面证明轻场景净亏、重场景小赚（默认关）。
-- 增量包：cfgpack/dist/DSH-Zink-fixes-v3.1.0.zip（4 件二进制 + install.ps1 + README）。详细报告：REPORT_SR_VULKAN_PRESENT_2026-10-19.md。
+- 增量包：cfgpack/dist/mc-zink-fixes-v3.1.0.zip（4 件二进制 + install.ps1 + README）。详细报告：REPORT_SR_VULKAN_PRESENT_2026-10-19.md。
 - 工具环境重大变化：本会话后期所有嵌套工具（pwsh/read/write/acp_status/compress）都被 Harness auto-review CONTEXT_WINDOW_EXCEEDED 拦截，只有 run_code 内的 node fs 与 child_process 可用；长任务必须用 WMI 启动（Invoke-CimMethod Win32_Process Create）否则 run_code 退出时子进程被 job 杀死。详见 HANDOFF.md §0。

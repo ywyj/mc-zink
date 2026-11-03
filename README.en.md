@@ -1,6 +1,6 @@
 English | [中文](README.md)
 
-# DSH-Zink: Running Minecraft on Mesa zink (OpenGL → Vulkan)
+# mc-zink: Running Minecraft on Mesa zink (OpenGL → Vulkan)
 
 > **Bottom line:** Mesa zink runs Minecraft 1.21.1 (NeoForge), and in steady state it reaches about **0.88×** the frame rate of native NVIDIA OpenGL on the same machine (pooled median 182 vs 212 fps). It does **not** beat native OpenGL; the gap is roughly 12%. That number, and the specific calls the gap comes from, is what this project is about.
 
@@ -30,6 +30,27 @@ On Windows, the project does three things:
 ---
 
 ## 2. Why we built it
+
+### Starting point: two low-end laptops and a Create server
+
+This project did not start with a research question looking for a use case. It started with a concrete problem: I play the Create modpack with friends, and two of them run weak machines — one ultrabook, one Snapdragon laptop. The modpack's gears, shafts, production lines, and shaders brought both machines to their knees.
+
+I wanted to see whether we could bypass Minecraft's default OpenGL path and raise the frame rate:
+
+- use Mesa's zink to translate OpenGL calls into Vulkan;
+- add **super resolution** (render at a lower internal resolution, then upscale to the target resolution);
+- add **frame generation** (generate intermediate frames between real frames);
+- and pair them with Sodium and other optimization mods to cut CPU-side rendering overhead.
+
+The outcome split in two.
+
+**What worked:** super resolution (FSR1, 1.5×) and frame generation both ran successfully. Sodium and Iris shaders also started normally, and the Vulkan presentation path was usable in the experimental configuration, with no black screen or deadlock.
+
+**What fell short:** the zink translation layer itself is about 12% slower than native NVIDIA OpenGL on the same machine (0.88×). Part of what super resolution and frame generation saved was eaten by that structural overhead. I also wanted to use Vulkan's explicit features — multi-threaded command recording, finer-grained synchronization — to push CPU overhead down and frame rate up, but that part never materialized, and the project did not meet expectations.
+
+So the honest status is: **the features work; the performance target was not reached.** I am publishing it in the hope that someone able to maintain it will pick it up — the code, the measurements, and the failure records are all here, and the path is laid this far.
+
+### Technical motivations
 
 Three motivations:
 
@@ -154,7 +175,7 @@ Shortest path:
 1. Prepare Windows 10/11 x64, Visual Studio Build Tools (MSVC + Windows SDK), Meson, Ninja, Python 3.14, and JDK 21.
 2. Download the Mesa 26.2.5 source tree and apply the patches under `mesaopt/patches/` in order (shader cache, fat single-file build, zoo2 P3).
 3. Configure and build with meson to produce `opengl32.dll`, `libEGL.dll`, and `libGLESv2.dll`; verify the export table (379 exports, ordinal base 7, system DLLs only).
-4. Build `zinkgl`, `zinkinfo`, and `createopt` (`dshcore` needs a project set up by hand), then place them and the config templates under `<MC directory>/versions/DSH-Zink/`.
+4. Build `zinkgl`, `zinkinfo`, and `createopt` (`dshcore` needs a project set up by hand), then place them and the config templates under `<MC directory>/versions/mc-zink/`.
 5. Launch the game, confirm `GL_RENDERER` contains "zink", then measure using [docs/MEASUREMENT.md](docs/MEASUREMENT.md).
 
 ---
@@ -267,6 +288,19 @@ This repository contains only **documentation, original source code, Mesa patche
 - PolyForm Noncommercial 1.0.0 is **not an OSI-defined open-source license**; GitHub will classify it as "Other". It permits modification and redistribution but prohibits commercial use — this is a deliberate choice.
 - The `dshcore` build embeds third-party code and **cannot** be distributed under PolyForm as a whole; the repository publishes only the original source.
 - Each mod's `META-INF/neoforge.mods.toml` still carries a legacy `license = "MIT"` field that disagrees with the root license; the root [LICENSE](LICENSE) governs, and these fields will be synchronized before the next release.
+
+---
+
+## Project status and maintenance
+
+Status: **a personal hobby project — feature-verified, performance target missed, now paused.** The author does not have enough time to push it further. The code, data, measurement protocol, and failure records are preserved in full.
+
+If you want to take over or contribute:
+
+- start with [STATUS.md](STATUS.md) and [HANDOFF.md](HANDOFF.md) for current progress, known issues, and open work;
+- the most valuable direction is cutting CPU-side overhead (see "Where the gap comes from" in Section 2 and the unfinished Vulkan multi-threading / synchronization ideas);
+- open an Issue describing what you want to do, so effort is not duplicated;
+- the code is under PolyForm Noncommercial 1.0.0; non-commercial use and modification are allowed.
 
 ---
 

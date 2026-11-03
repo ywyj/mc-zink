@@ -1,6 +1,6 @@
 [English](README.en.md) | 中文
 
-# DSH-Zink：在 Minecraft 上把 OpenGL 转译成 Vulkan
+# mc-zink：在 Minecraft 上把 OpenGL 转译成 Vulkan
 
 > **一句话结论**：Mesa zink 能在 Minecraft 1.21.1（NeoForge）上跑起来，稳态帧率约为同一台机器上原生 NVIDIA OpenGL 的 **0.88**（pooled median 182 对 212）。**没有超过原生**，差约 12%。这个数字、以及差距具体来自哪些调用，就是本项目想讲清楚的事。
 
@@ -30,6 +30,27 @@
 ---
 
 ## 二、为什么做
+
+### 起点：两台低配笔记本，和一台机械动力服务器
+
+这个项目不是先有选题、再找场景。它来自一个很具体的问题：我平时和朋友一起玩 Create（机械动力）整合包，其中两位用的机器偏弱——一台轻薄本，一台骁龙笔记本。整合包里的齿轮、传动杆、流水线和光影，让这两台机器都跑得很吃力。
+
+我想试试能不能绕开 Minecraft 默认的 OpenGL 路径，把帧率抬起来：
+
+- 用 Mesa 的 zink 把 OpenGL 调用转译成 Vulkan；
+- 在渲染链路上做**超分辨率**（用较低的内部渲染分辨率渲染，再放大回目标分辨率）；
+- 用**插帧**（frame generation）在真实帧之间生成中间帧；
+- 再配合 Sodium（钠）等优化 mod，压低 CPU 侧的渲染开销。
+
+结果可以分成两半。
+
+**成功的部分**：超分辨率（FSR1，1.5×）和插帧都成功运行过；Sodium（钠）与 Iris 光影也能正常启动，Vulkan 呈现路径在实验配置下可用，没有黑屏或死锁。
+
+**没达到预期的部分**：zink 转译层本身比同一台机器上的原生 NVIDIA OpenGL 慢约 12%（0.88×）。超分和插帧省下来的时间，被这层结构性开销吃掉了一部分。我原本还想进一步利用 Vulkan 的显式特性——例如多线程命令录制、更细粒度的同步控制——把 CPU 开销压下去、把帧率提上来，但这部分最终没有做出来，项目也没有达到预期。
+
+所以这个项目的真实状态是：**功能验证成功，性能没有达到预期**。我把它公开出来，是希望有能力维护的人接手——代码、测量数据和失败记录都在仓库里，路已经铺到这里，剩下的可以接着走。
+
+### 技术动机
 
 动机有三个：
 
@@ -152,7 +173,7 @@ NVIDIA Vulkan 驱动（RTX 3060 Laptop，596.21）
 1. 准备 Windows 10/11 x64、Visual Studio Build Tools（MSVC + Windows SDK）、Meson、Ninja、Python 3.14、JDK 21。
 2. 下载 Mesa 26.2.5 源码，按顺序应用 `mesaopt/patches/` 下的补丁（shader cache、fat 单文件、zoo2 P3）。
 3. 用 meson 配置并构建，得到 `opengl32.dll`、`libEGL.dll`、`libGLESv2.dll`；用导出表门禁检查（379 个导出、ordinal base 7、仅依赖系统 DLL）。
-4. 构建 `zinkgl`、`zinkinfo`、`createopt`（`dshcore` 需自建工程），连同配置模板放入 `<MC目录>/versions/DSH-Zink/`。
+4. 构建 `zinkgl`、`zinkinfo`、`createopt`（`dshcore` 需自建工程），连同配置模板放入 `<MC目录>/versions/mc-zink/`。
 5. 启动游戏，确认 `GL_RENDERER` 含 zink 字样，再按 [docs/MEASUREMENT.md](docs/MEASUREMENT.md) 的方法测量。
 
 ---
@@ -265,6 +286,19 @@ NVIDIA Vulkan 驱动（RTX 3060 Laptop，596.21）
 - PolyForm Noncommercial 1.0.0 **不是 OSI 定义的开源许可**，GitHub 会把它识别为 “Other”。它允许修改与再分发，但禁止商业用途，这是有意的选择。
 - `dshcore` 的构建产物内嵌第三方代码，**不能**整体按 PolyForm 分发；仓库只公开自研源码。
 - 各 mod 的 `META-INF/neoforge.mods.toml` 中仍有历史遗留的 `license = "MIT"` 字段，与根目录许可不一致；以根目录 [LICENSE](LICENSE) 为准，后续发布前会统一同步。
+
+---
+
+## 项目状态与维护
+
+当前状态：**个人业余项目，功能验证完成，性能未达预期，已暂停推进**。作者没有足够时间继续做下去，仓库里的代码、数据、测量协议和失败记录都完整保留。
+
+如果你想接手或参与：
+
+- 先从 [STATUS.md](STATUS.md) 和 [HANDOFF.md](HANDOFF.md) 看起，那里有当前进度、已知问题和待办；
+- 最值得继续的方向是把 CPU 侧开销压下去（见第二章「差距在哪」以及 Vulkan 多线程、同步相关的未完成设想）；
+- 通过仓库 Issue 说明你想做什么，避免多人重复劳动；
+- 代码许可为 PolyForm Noncommercial 1.0.0，非商业使用与修改都允许。
 
 ---
 

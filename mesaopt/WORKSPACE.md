@@ -26,4 +26,4 @@ C:\Python314\python.exe _probe\layer_postbuild.py dist\pgo_ttl\opengl32.pgo-ttl.
 
 ## 当前发货件
 - `dist/pgo_ttl/opengl32.pgo-ttl.dll` 16,785,408B sha256 `d9f5cc50511f7248…`（PGO + Win32 管线缓存 TTL，gate 37 PASS/1 尺寸误报）
-- mrpack：`<项目根目录>/cfgpack/dist/DSH-Zink-340*.mrpack`（v3.4，含该 DLL + AR E-B 默认 DISABLED）
+- mrpack：`<项目根目录>/cfgpack/dist/mc-zink-340*.mrpack`（v3.4，含该 DLL + AR E-B 默认 DISABLED）

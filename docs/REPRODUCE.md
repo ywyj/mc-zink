@@ -1,6 +1,6 @@
 # 复现指南
 
-本文说明如何在他机上复现 DSH-Zink 的构建与测量。先说清楚：**能复现的是方法与趋势，不是逐帧数字**。硬件、驱动、mod 版本、世界内容稍有不同，绝对值就会变。
+本文说明如何在他机上复现 mc-zink 的构建与测量。先说清楚：**能复现的是方法与趋势，不是逐帧数字**。硬件、驱动、mod 版本、世界内容稍有不同，绝对值就会变。
 
 ## 一、复现目标
 
@@ -58,7 +58,7 @@
 
 ### 第 1 步：建立实例
 
-1. 用启动器创建一个 **1.21.1 + NeoForge 21.1.229** 的版本隔离实例，命名为 `DSH-Zink`；
+1. 用启动器创建一个 **1.21.1 + NeoForge 21.1.229** 的版本隔离实例，命名为 `mc-zink`；
 2. 给 Java 进程分配足够的 CPU 与内存（实测 Java 进程约 400% CPU，即 4 核）；
 3. 关闭电池省电、限制帧率、垂直同步；
 4. 准备一个**超平坦、无光影**的固定世界，作为唯一测试场景。
@@ -73,7 +73,7 @@
 - `libEGL.dll`
 - `libGLESv2.dll`
 
-把三个 DLL 放到 `<MC目录>/versions/DSH-Zink/` 根部，与版本 jar 同级。**不要**放到 `System32`。
+把三个 DLL 放到 `<MC目录>/versions/mc-zink/` 根部，与版本 jar 同级。**不要**放到 `System32`。
 
 ### 第 3 步：构建并放置 mod
 
@@ -85,7 +85,7 @@
 
 ```powershell
 # 以 NVIDIA 为例
-copy <项目根目录>\cfgpack\config\* <MC目录>\versions\DSH-Zink\config\ -Recurse
+copy <项目根目录>\cfgpack\config\* <MC目录>\versions\mc-zink\config\ -Recurse
 ```
 
 `cfgpack/profiles/gpu-nvidia.toml` 是**配置建议清单**，不是游戏会读取的文件；按其中的键值逐项合并到对应 mod 的配置，或作为调参参考。

@@ -128,10 +128,10 @@
 - **v3.2 mrpack（已 promote 到 dist 根，可直接分发）**：
   | 包 | 大小 | sha256 | index files/entries | 校验 |
   |---|---|---|---|---|
-  | DSH-Zink-320.mrpack | 19,045,856 | 1c48c8b41d1967296ebee11ff50c1ca6aec6f18df7ba71729a693bd0347177b1 | 46/60 | 117/117 |
-  | DSH-Zink-320-nvidia.mrpack | 87,747,651 | f0e28b545f2a06ac15f2741a6225d8b76bbe21392c23e304eae7c7db89b39f95 | 45/76 | 117/117 |
-  | DSH-Zink-320-nodsh.mrpack | 17,323,777 | f90d25b2a48a26a3613227aca6ef6450a75c7d7e579b7ca383907f4754f6e048 | 50/65 | 109/109 |
-  | DSH-Zink-320-nodsh-nvidia.mrpack | 86,025,577 | ec07215af17dbf5e07fbddaf0e0c90903c1d6624a11f8fa04db0ff05fcdb8cf9 | 49/81 | 109/109 |
+  | mc-zink-320.mrpack | 19,045,856 | 1c48c8b41d1967296ebee11ff50c1ca6aec6f18df7ba71729a693bd0347177b1 | 46/60 | 117/117 |
+  | mc-zink-320-nvidia.mrpack | 87,747,651 | f0e28b545f2a06ac15f2741a6225d8b76bbe21392c23e304eae7c7db89b39f95 | 45/76 | 117/117 |
+  | mc-zink-320-nodsh.mrpack | 17,323,777 | f90d25b2a48a26a3613227aca6ef6450a75c7d7e579b7ca383907f4754f6e048 | 50/65 | 109/109 |
+  | mc-zink-320-nodsh-nvidia.mrpack | 86,025,577 | ec07215af17dbf5e07fbddaf0e0c90903c1d6624a11f8fa04db0ff05fcdb8cf9 | 49/81 | 109/109 |
   - 默认配置含 E-A（IFA fast_buffer_upload=false）；**四包内 `overrides/mesa/opengl32.dll` 均为 zoo2**（17,421,824B sha BF71E736…）；dshcore-1.3.1（sha d07ff8db…）；`--repro` 与 staging 构建逐字节一致；v3.0.0 回滚件保留（SHA256SUMS-v300.txt）。VULKAN 模板仅 staging（_v32-test-vk），未 promote。
 - **实例首启验收（已做）**：实例装 zoo2 + E-A + dshcore-1.3.1 → 进世界正常（n=20、无 crash、`[DSH Core] version=1.3.1 mods=11 mixinConfigs=28 injectionPoints=132`、0 GL error/0 hs_err）；另 shader-on（Complementary）冒烟通过。
 - **dshcore 1.3.1**（2,548,186B sha d07ff8db…）：仅资源/版本串变化，classes/mixins 与 1.3.0 逐字节相同（路线 B 断言成立）。
@@ -204,7 +204,7 @@
 ### 7.8 2026-10-19 17:0x-17:2x 追加实测（续 §7.5-§7.7）
 
 **测量环境校正（已验证）**：bench3/ac_ab2 启动的游戏进程实际加载的是
-`<MC目录>\versions\DSH-Zink\mesa\opengl32.dll`（用 PowerShell 读 java 进程 Modules 证实），
+`<MC目录>\versions\mc-zink\mesa\opengl32.dll`（用 PowerShell 读 java 进程 Modules 证实），
 即 A/B 队列测的是**实例 mesa 目录里的 DLL（zink）**，不是原生 NVIDIA GL；
 Sodium 日志里的 `AdapterInfo{vendor=NVIDIA, ... openglIcdFilePath=nvoglv64.dll}` 来自 Win32/注册表探测，
 不能当作"是否 zink"的判据。native 对照仍靠 `ensureMesa(false)` 把 mesa 目录改名成 mesa.off。
@@ -285,7 +285,7 @@ Sodium 日志里的 `AdapterInfo{vendor=NVIDIA, ... openglIcdFilePath=nvoglv64.d
 ### 7.11 2026-10-19 19:0x：**PGO 打通 +8.2%（内核级最大单项收益）**
 
 **PGO 采集卡点的真相（已解决）**
-- 之前“`mesaopt/pgo/*.pgc` 恒为 0”是**找错位置**：MSVC pgort 把 `.pgc` 写在**被插桩模块所在目录/进程工作目录**，不是 `/PGD` 指定目录。实际产物：`<MC目录>/versions/DSH-Zink/mesa/mesa!1.pgc` **6,923,064B**（17:50 那次 120s 实机运行产生）。
+- 之前“`mesaopt/pgo/*.pgc` 恒为 0”是**找错位置**：MSVC pgort 把 `.pgc` 写在**被插桩模块所在目录/进程工作目录**，不是 `/PGD` 指定目录。实际产物：`<MC目录>/versions/mc-zink/mesa/mesa!1.pgc` **6,923,064B**（17:50 那次 120s 实机运行产生）。
 - 依赖链：插桩 DLL 依赖 `pgort140.DLL`（VS BuildTools `VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/`），启动 bat 里 `set PATH=<该目录>;%PATH%` 即可；否则 ZinkGL 预加载失败会**静默回退原生 GL**。
 - 小程序验证：`tmp/pgotest.c` 用 `cl /O2 /GL ... /link /LTCG:PGINSTRUMENT /PGD:...` 编译运行后生成 `test!1.pgc` 于**当前目录** ⇒ 工具链正常。注意必须带优化开关（`/O2`），否则 C4964“未指定优化，不收集配置信息”。
 
@@ -323,10 +323,10 @@ Sodium 日志里的 `AdapterInfo{vendor=NVIDIA, ... openglIcdFilePath=nvoglv64.d
 **③ v3.3 出包（在 v3.2 基础上：mesa DLL→PGO + AR E-B 默认）**
 | 包 | 大小 | sha256 | 校验 |
 |---|---|---|---|
-| DSH-Zink-330.mrpack | 19,238,154 | 8a15603d42b07cc90e512d24206ea2374357dc7632095c32d76bb7460fc8e4ee | 60 entries, zipbad None, 内嵌 DLL sha 494a96d1…, E-B DISABLED, versionId 3.3.0 |
-| DSH-Zink-330-nvidia.mrpack | 88,279,015 | 21eb865a69b341e7be33fd7e1480799733ee2f09fe097fea703ec3296ffa2be1 | 76 entries 同上 |
-| DSH-Zink-330-nodsh.mrpack | 17,516,077 | 2a7aee57b17cbf56ee0919aa5d88380c619497d4cb5d3eb9ca04efa89368a017 | 65 entries 同上 |
-| DSH-Zink-330-nodsh-nvidia.mrpack | 86,556,944 | e584d423ec70128f9e3d1a5af066957a936b62d297353a6c47f669083d6279ac | 81 entries 同上 |
+| mc-zink-330.mrpack | 19,238,154 | 8a15603d42b07cc90e512d24206ea2374357dc7632095c32d76bb7460fc8e4ee | 60 entries, zipbad None, 内嵌 DLL sha 494a96d1…, E-B DISABLED, versionId 3.3.0 |
+| mc-zink-330-nvidia.mrpack | 88,279,015 | 21eb865a69b341e7be33fd7e1480799733ee2f09fe097fea703ec3296ffa2be1 | 76 entries 同上 |
+| mc-zink-330-nodsh.mrpack | 17,516,077 | 2a7aee57b17cbf56ee0919aa5d88380c619497d4cb5d3eb9ca04efa89368a017 | 65 entries 同上 |
+| mc-zink-330-nodsh-nvidia.mrpack | 86,556,944 | e584d423ec70128f9e3d1a5af066957a936b62d297353a6c47f669083d6279ac | 81 entries 同上 |
 - 出包方式：Python zipfile 重写 v3.2 包（保持全部条目/压缩方式不变），只替换 `overrides/mesa/opengl32.dll`（16,784,384B sha 494a96d1…）与 `overrides/config/acceleratedrendering-client.toml`（E-B DISABLED），并置 `modrinth.index.json.versionId=3.3.0`。
 - `cfgpack/dist/SHA256SUMS.txt` 已追加 3.3.0 段（旧 3.0/3.2 记录保留）。
 - 回滚：v3.2 四包仍在 dist 根未动；mesa 回滚件 `mesaopt/dist/zoo2/opengl32.zoo2.dll`（BF71E736…）。
@@ -362,10 +362,10 @@ Sodium 日志里的 `AdapterInfo{vendor=NVIDIA, ... openglIcdFilePath=nvoglv64.d
 **v3.4 出包（在 v3.3 基础上仅换 mesa DLL = PGO+TTL）**
 | 包 | 大小 | sha256 |
 |---|---|---|
-| DSH-Zink-340.mrpack | 19,239,024 | b6a3b6d423378d435a2634cf07081398bc7b343514978a4db8077429a89b7d35 |
-| DSH-Zink-340-nvidia.mrpack | 88,279,885 | c6a0b27a9759200b491804f3730ef264051e1077a36b130ca76118ff132678f1 |
-| DSH-Zink-340-nodsh.mrpack | 17,516,947 | bba41a114fbf3d4f2bc0c7d77b31b83bcd3df6a40e598decb32ac7492456b661 |
-| DSH-Zink-340-nodsh-nvidia.mrpack | 86,557,814 | 1e453b408e65d528420d85b1a6b43792f3b367329d9e7bf34d3f09ab5e2a0fed |
+| mc-zink-340.mrpack | 19,239,024 | b6a3b6d423378d435a2634cf07081398bc7b343514978a4db8077429a89b7d35 |
+| mc-zink-340-nvidia.mrpack | 88,279,885 | c6a0b27a9759200b491804f3730ef264051e1077a36b130ca76118ff132678f1 |
+| mc-zink-340-nodsh.mrpack | 17,516,947 | bba41a114fbf3d4f2bc0c7d77b31b83bcd3df6a40e598decb32ac7492456b661 |
+| mc-zink-340-nodsh-nvidia.mrpack | 86,557,814 | 1e453b408e65d528420d85b1a6b43792f3b367329d9e7bf34d3f09ab5e2a0fed |
 - 已追加 `cfgpack/dist/SHA256SUMS.txt` 3.4.0 段；回滚件：`dist/pgo1`（仅 PGO）、`dist/zoo2`。
 - 回归 A/B（pgo1 vs pgo-ttl 同队列 ABBA `_stage/queue_ttl_ab.json`）进行中，结果见下条或 §7.14。
 

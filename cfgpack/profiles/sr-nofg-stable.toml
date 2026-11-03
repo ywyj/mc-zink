@@ -1,4 +1,4 @@
-# DSH-Zink SR 稳定版（无帧生成）覆盖片段 v1.2.0
+# mc-zink SR 稳定版（无帧生成）覆盖片段 v1.2.0
 # 适用：zink(Mesa) 下 DLSS-G 协商失败（fg=null）时的默认配置。
 # 基线：upscale_algo="fsr1"、upscale_ratio=1.5、presentation.backend="VULKAN"、compat_shader_compiler=true
 # 说明：Reflex 低延迟与 FG 独立，日志确认 zink 下 lowLatency=wisteria:reflex_streamline 可用。

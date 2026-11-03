@@ -66,7 +66,7 @@
 
 ### 1.8 压缩进 zink（dshcore）与打包分享
 - 合并顺序：adaptive 系统 → 内存/线程调度 → warmup →（createlod 实机后并入）→ 更新 dshcore jar 与 mrpack；
-- 分享包：v3.1 mrpack（重扫 `_packdata.json`）+ 增量包（已交付 DSH-Zink-fixes-v3.1.0.zip）；
+- 分享包：v3.1 mrpack（重扫 `_packdata.json`）+ 增量包（已交付 mc-zink-fixes-v3.1.0.zip）；
 - 合规：Opticores/SR 修复件是 patch 版 jar，公开分发需注明来源与许可。
 
 ## 2. 不可达目标（需用户确认降级）

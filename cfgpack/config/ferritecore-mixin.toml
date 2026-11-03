@@ -1,4 +1,4 @@
-# DSH-Zink 优化配置包 v1.2.0 — 性能优先 / 视觉不降级
+# mc-zink 优化配置包 v1.2.0 — 性能优先 / 视觉不降级
 # 由 dshconfig 部署：仅在目标文件缺失、或仍为原始 mod 默认（未手改）时写入；手改后不再覆盖。详见 CONFIG_NOTES.md
 #Use a slightly more compact, but also slightly slower representation for block states
 compactFastMap = false

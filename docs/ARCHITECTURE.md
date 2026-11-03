@@ -1,6 +1,6 @@
 # 架构与组件
 
-本文说明 DSH-Zink 在运行时由哪些部件组成、一次绘制调用如何从 Minecraft 走到 GPU，以及仓库各目录负责什么。数字与版本以 [HANDOFF.md](../HANDOFF.md)、[STATUS.md](../STATUS.md) 和 [mesaopt/REPORT.md](../mesaopt/REPORT.md) 为准。
+本文说明 mc-zink 在运行时由哪些部件组成、一次绘制调用如何从 Minecraft 走到 GPU，以及仓库各目录负责什么。数字与版本以 [HANDOFF.md](../HANDOFF.md)、[STATUS.md](../STATUS.md) 和 [mesaopt/REPORT.md](../mesaopt/REPORT.md) 为准。
 
 ## 一、总体定位
 
@@ -32,7 +32,7 @@ Minecraft Java 版的渲染代码（Blaze3D）只认识 OpenGL。本项目不修
 
 ## 二、启动与初始化顺序
 
-1. 启动器选择版本 `DSH-Zink`，把工作目录设为 `<MC目录>/versions/DSH-Zink/`。
+1. 启动器选择版本 `mc-zink`，把工作目录设为 `<MC目录>/versions/mc-zink/`。
 2. JVM 启动，LWJGL 通过 GLFW 创建窗口，并按 Windows 的 DLL 搜索顺序加载**实例目录下**的 `opengl32.dll`（应用目录优先于系统目录）。
 3. `opengl32.dll` 内的 WGL 前端创建 OpenGL 上下文；Mesa 的 Gallium 层加载 zink 驱动（`GALLIUM_DRIVER=zink`）。
 4. zink 枚举 Vulkan 物理设备、创建 `VkDevice` 与队列，kopper 为窗口创建交换链。

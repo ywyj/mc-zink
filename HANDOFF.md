@@ -1,4 +1,4 @@
-# HANDOFF — DSH-Zink 转译性能极致优化（Lead 交接，2026-10-19 23:2x，v3.5.0 已发布）
+# HANDOFF — mc-zink 转译性能极致优化（Lead 交接，2026-10-19 23:2x，v3.5.0 已发布）
 
 > 读我：本文件是新会话入口。**本轮（10-19 通宵+上午）已完成「zink 内核级 + 配置级 + 着色器预编译」三条线的实测闭环**，详细结果与数据在 `<项目根目录>/ZINK_OPTIMIZATION_RESULTS.md`（必读，含全部 A/B 数字与判读）。历史在 STATUS.md（§1-§16）与各组 REPORT/STATUS。
 
@@ -17,7 +17,7 @@
 
 ## §1 实例当前状态（2026-10-19 12:40 实机）
 
-- 目录 `<MC目录>/versions/DSH-Zink`，mods 56 jar，存档只有 `saves/新的世界`（超平坦 test world，zinkinfo.cfg join=新的世界）。
+- 目录 `<MC目录>/versions/mc-zink`，mods 56 jar，存档只有 `saves/新的世界`（超平坦 test world，zinkinfo.cfg join=新的世界）。
 - `mesa/opengl32.dll` = **zoo2**（Mesa 26.2.5 + 磁盘 shader cache + P3 补丁），17,421,824 B sha256 `BF71E7369A0142303E7024E364ACD15DFC06960C267C4D537E0ED1F48658597F`（已两轮冒烟：无光影 / Complementary 光影均正常）。
   - 回滚：`Copy-Item <项目根目录>/mesaopt/dist/opengl32.dll → 同路径`（cache-only，sha `C768681A31293E7F600742A70FF2B09C1D039A5DC29364504D6AAE9D15CC3A9F`）。
 - mods 关键版本：dshcore-1.3.0（实例里仍是 1.3.0；包内已 1.3.1，二者 classes/mixins 逐字节相同）、super_resolution-0.9.2-alpha.2+dshfix1、Opticores-1.1.0-dshfix、iris-1.8.14-beta.1、sodium-0.8.13、ImmediatelyFast-1.6.15、AcceleratedRendering。
@@ -63,10 +63,10 @@
 ### 3.1 v3.5.0（2026-10-19 23:2x +08，已 promote 到 dist 根）
 | 包 | 大小 (B) | sha256 | entries | files[] |
 |---|---|---|---|---|
-| DSH-Zink-350.mrpack | 18,910,166 | `7d153284f3d45b0727037ba8d29ba0a03edbd0801f129176ba6fa4f4ff3721b3` | 60 | 46 |
-| DSH-Zink-350-nvidia.mrpack | 87,565,164 | `f84eb657ad947509931c5cf3fe13208418af5a2510de8bcd2f25dff1e41a8fd5` | 76 | 45 |
-| DSH-Zink-350-nodsh.mrpack | 17,188,559 | `91aca5743fe9e369529bde20b1657d34231319887ab7a70817de64f309ea1324` | 65 | 50 |
-| DSH-Zink-350-nodsh-nvidia.mrpack | 85,843,556 | `0312393cb678f7ebb9ca85f1981ed74be69b8853fbc71106beb7f65af5a85c6c` | 81 | 49 |
+| mc-zink-350.mrpack | 18,910,166 | `7d153284f3d45b0727037ba8d29ba0a03edbd0801f129176ba6fa4f4ff3721b3` | 60 | 46 |
+| mc-zink-350-nvidia.mrpack | 87,565,164 | `f84eb657ad947509931c5cf3fe13208418af5a2510de8bcd2f25dff1e41a8fd5` | 76 | 45 |
+| mc-zink-350-nodsh.mrpack | 17,188,559 | `91aca5743fe9e369529bde20b1657d34231319887ab7a70817de64f309ea1324` | 65 | 50 |
+| mc-zink-350-nodsh-nvidia.mrpack | 85,843,556 | `0312393cb678f7ebb9ca85f1981ed74be69b8853fbc71106beb7f65af5a85c6c` | 81 | 49 |
 
 - 四包 versionId 统一 **3.5.0**；内嵌 `overrides/mesa/opengl32.dll` 均 pgo2 16,798,208 B sha `31e13c743ae0cc7cd7555ff720d40494b70fb22966faa3e064421295d856c398`；`overrides/config/flywheel-client.toml` 872 B `c67955c7…`（backend=colorwheel:instancing）；`overrides/shaderpacks/ComplementaryReimagined_r5.9.3.zip.txt` 61 B `b4da80c9…`（TAA_DEFINE=0）；AR E-B DISABLED（29,850 B `50efa68d…`）。
 - 构建：官方流（build-mrpack.mjs）**--repro** 主套 117/117、nodsh 109/109 通过，两套均“base 一致，nvidia 一致”；随后仅做 versionId 归一化为四包 3.5.0（确定性：两次归一化 sha 相同，工具 tools/_v35_final_normalize.py）。
@@ -78,14 +78,14 @@
 
 ### 3.1b v3.5.1 候选（未发布；等 zsync 实机验证）
 - dryrun 目录：dist/_v35.1-dryrun-zsync/（基于 v3.5.0 已发布四包 -SrcTag 350 + dshcore-1.3.1-zsync 替换，未 promote）。
-- 包：DSH-Zink-351.mrpack 18,912,356 B sha `33c924206204be3ffd8a8992c51a8be499441ec35551a227ba7be0720743ac27`；-nvidia 87,567,353 B `d06391a2c0f4b47c7fde65ffcf48f3ad855c30b951ad6dfe30d6781877623e25`；-nodsh 17,188,446 B `ad7a9605c01f5bebc13f835703dfd31c2d8ea96aecc062640d21e653a7998e05`；-nodsh-nvidia 85,843,447 B `7053f61ae35c084e7517b648f328b8052549466f6d96ab5f2d7686cb58ca48d3`。四包 versionId 3.5.1、entries 60/76/65/81 不变、--repro 一致。
+- 包：mc-zink-351.mrpack 18,912,356 B sha `33c924206204be3ffd8a8992c51a8be499441ec35551a227ba7be0720743ac27`；-nvidia 87,567,353 B `d06391a2c0f4b47c7fde65ffcf48f3ad855c30b951ad6dfe30d6781877623e25`；-nodsh 17,188,446 B `ad7a9605c01f5bebc13f835703dfd31c2d8ea96aecc062640d21e653a7998e05`；-nodsh-nvidia 85,843,447 B `7053f61ae35c084e7517b648f328b8052549466f6d96ab5f2d7686cb58ca48d3`。四包 versionId 3.5.1、entries 60/76/65/81 不变、--repro 一致。
 - 输入 dshcore zsync jar：dshcore/build/dshcore-1.3.1-zsync.jar 2,550,735 B sha `25798128f00dade093c166c3c15b48a3158890e7410acfcc3b5d087c1505e58c`（R8-1 源码重建，记录见 cfgpack/ZSYNC_MERGE_131.md）。
 - nodsh 两包无 dshcore entry → -ReplaceEntry 跳过（不算失败）；若要 nodsh 也带 zsync 需改 5 组成 jar 方案，需 Lead 决策。
 - **同时待决策的缺口**：v3.5 四包缺 colorwheel jar 但 flywheel backend=colorwheel:instancing → 新用户可能缺后端；add-override 干跑见 dist/_v35-dryrun-modgap/（entries 61/77/66/82，repro 一致）与 cfgpack/MODS_GAP_ANALYSIS.md。
 - 详见 cfgpack/REPORT_V351_DRYRUN.md。发布前提：zsync 实机验证 + colorwheel 是否并入 + Lead promote。
 
 ### 3.1c v3.5.1（2026-10-19，已 promote 到 dist 根）
-- 四包：DSH-Zink-351.mrpack 19,375,235 B sha 3eb64d45c85327f2dbe1dd762ad3e772593fd7c3f636192a9986786452213db7；-nvidia 88,030,232 B 05b594c6522bc8ebb5faa4751548282eb13afa9e233503010c7850118747c9ea；-nodsh 17,651,325 B c1b17ca755f932e402ea827bb2efc14144434fdb00a6cc9d7c0367ac4395fe2c；-nodsh-nvidia 86,306,326 B 5f216e93e58a35ce36e64cdc1660e564a6f3a3565eae6e7f8d67413cdec0030a。
+- 四包：mc-zink-351.mrpack 19,375,235 B sha 3eb64d45c85327f2dbe1dd762ad3e772593fd7c3f636192a9986786452213db7；-nvidia 88,030,232 B 05b594c6522bc8ebb5faa4751548282eb13afa9e233503010c7850118747c9ea；-nodsh 17,651,325 B c1b17ca755f932e402ea827bb2efc14144434fdb00a6cc9d7c0367ac4395fe2c；-nodsh-nvidia 86,306,326 B 5f216e93e58a35ce36e64cdc1660e564a6f3a3565eae6e7f8d67413cdec0030a。
 - 变更：dshcore-1.3.1.jar → 1.3.1-zsync（2,550,735 B sha 25798128…，仅 base/-nvidia 有该 jar；nodsh 两包无 entry，保持 3.5.1 不变）；四包新增 overrides/mods/colorwheel-neoforge-1.3.0+mc1.21.1.jar（514,376 B sha 3c7c1f91…，修补 colorwheel:instancing 后端缺 jar）。entries 61/77/66/82、versionId 3.5.1、内嵌 DLL pgo2 31e13c74…、E-B DISABLED。
 - 根 SHA256SUMS.txt 已追加 3.5.1 段（保留 v3.4/v3.5 段）；回滚件 SHA256SUMS-v350-root.txt；发布流程/自检见 cfgpack/RELEASE_PROCESS_V351.md。
 - 依据：dist/_v35.1-dryrun-full/（REPORT_V351_DRYRUN.md 的 3.5.1 dryrun；本小节由 promote-v351.ps1 -Apply 写入）。
@@ -100,10 +100,10 @@
 ### 3.2 v3.4.0（2026-10-19 12:18Z，zip 手术：PGO+TTL DLL + E-B 默认，上一版）
 | 包 | 大小 | sha256 |
 |---|---|---|
-| DSH-Zink-340.mrpack | 19,239,024 | `b6a3b6d423378d435a2634cf07081398bc7b343514978a4db8077429a89b7d35` |
-| DSH-Zink-340-nvidia.mrpack | 88,279,885 | `c6a0b27a9759200b491804f3730ef264051e1077a36b130ca76118ff132678f1` |
-| DSH-Zink-340-nodsh.mrpack | 17,516,947 | `bba41a114fbf3d4f2bc0c7d77b31b83bcd3df6a40e598decb32ac7492456b661` |
-| DSH-Zink-340-nodsh-nvidia.mrpack | 86,557,814 | `1e453b408e65d528420d85b1a6b43792f3b367329d9e7bf34d3f09ab5e2a0fed` |
+| mc-zink-340.mrpack | 19,239,024 | `b6a3b6d423378d435a2634cf07081398bc7b343514978a4db8077429a89b7d35` |
+| mc-zink-340-nvidia.mrpack | 88,279,885 | `c6a0b27a9759200b491804f3730ef264051e1077a36b130ca76118ff132678f1` |
+| mc-zink-340-nodsh.mrpack | 17,516,947 | `bba41a114fbf3d4f2bc0c7d77b31b83bcd3df6a40e598decb32ac7492456b661` |
+| mc-zink-340-nodsh-nvidia.mrpack | 86,557,814 | `1e453b408e65d528420d85b1a6b43792f3b367329d9e7bf34d3f09ab5e2a0fed` |
 
 - 四包内嵌 DLL 16,785,408 B `d9f5cc50…`（pgo_ttl）；AR E-B DISABLED（`50efa68d…`）；dshcore-1.3.1；entries 60/76/65/81；versionId 扁平 3.4.0；第三方验收 cfgpack/REPORT_V34_VERIFY.md（4/4 PASS）。构建 zip 手术 dryrun 见 cfgpack/REPORT_V35_DRYRUN_PGO2.md 等历史文档。
 

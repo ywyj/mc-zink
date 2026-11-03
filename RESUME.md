@@ -5,7 +5,7 @@
 2) 本文件
 3) 各子目录 STATUS-*.md / REPORT.md（zinkperf、mesaopt、packer、dshcore、shaders、stability、createlod、mfg）
 
-## 1. 实例 canonical（<MC目录>/versions/DSH-Zink）
+## 1. 实例 canonical（<MC目录>/versions/mc-zink）
 - config/super_resolution/config.toml: [presentation].backend="OPENGL"（黑屏修复终态；VULKAN 需 srfix 补丁）、upscale_algo="fsr1"、upscale_ratio=1.5、[frame_generation].mode="OFF"、[low_latency] nv_reflex ON
 - config/iris.properties: enableShaders=false（bench 会改，跑完要还原）
 - config/flywheel-client.toml: backend="flywheel:instancing"（原 DEFAULT 备份在 <项目根目录>/_stage/cfg_backup_flywheel-client.toml）
@@ -35,7 +35,7 @@
 3) **一次性重建两套**（判明版本后跑，别白跑；需 Lead CPU 窗口）：`node tools/build-mrpack.mjs --repro --version=3.1.0-test --with-dshcore=<项目根目录>/dshcore/build/dshcore-<版本>.jar`（默认 OPENGL 安全档，SR backend=VULKAN 模板见 REPORT_PACK §10），VULKAN 变体按同节模板另跑一次，再 `node tools/build-absorb-map.mjs` 重建吸收映射。
 4) **复验**：`python tools/_check_zip.py` + 看 verify-report.json（期望 117/117：base+nvidia+cross）；`--repro` 必须字节一致；核对 dist/_v3c-test/SHA256SUMS.txt 与文件实际 sha256。
 5) **回写**：REPORT_PACK.md §10.3（实测表）/§11（吸收映射）/§13（dshcore 候选状态）与 STATUS-packer.md；把选定 dshcore jar 的 sha256/体积、两个 mrpack 的 sha256/体积/条目数、verify 结果报 Lead。
-6) **提升 dist 根**只在 Lead 明确下令后做：先把现有 dist/SHA256SUMS.txt 备份为 SHA256SUMS-v300.txt，再按 PROMOTE_CHECKLIST §1–§7 出 DSH-Zink-310.mrpack / DSH-Zink-310-nvidia.mrpack 并复核。
+6) **提升 dist 根**只在 Lead 明确下令后做：先把现有 dist/SHA256SUMS.txt 备份为 SHA256SUMS-v300.txt，再按 PROMOTE_CHECKLIST §1–§7 出 mc-zink-310.mrpack / mc-zink-310-nvidia.mrpack 并复核。
 7) 断电保护：每次构建完立即写盘并记录 sha；若 1.3 后续出 1.3.1 重复第 3–5 步（离线 132 项 + FML 解析 + 安装回滚必须全 PASS）后再谈提升。
 ## 5. ⚠ 2026-10-19 04:10 更新：srfix 实测失败（VULKAN present 仍黑屏，已回滚）
 - 结论：dshfix1 消除了 capture-ring 崩溃，但画面仍黑；根因改为「SR 自建 VkSwapchain 与 zink/Mesa WSI 抢同一 HWND」。详见 STATUS.md §14。

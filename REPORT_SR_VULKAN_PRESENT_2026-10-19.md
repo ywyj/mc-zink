@@ -38,4 +38,4 @@
 mods 共 56 jar；SR config：backend=OPENGL、upscale=false、ratio=1.5、algo=fsr1、FG=OFF、irisExtension=false；iris enableShaders=false。
 
 ## 6. 增量修复包
-<项目根目录>/cfgpack/dist/DSH-Zink-fixes-v3.1.0.zip（39,392,896 B，sha256 5000ADF10A03BD03...，6 条目：README/install.ps1/dshcore/SR fix/Opticores fix/mesa dll）。
+<项目根目录>/cfgpack/dist/mc-zink-fixes-v3.1.0.zip（39,392,896 B，sha256 5000ADF10A03BD03...，6 条目：README/install.ps1/dshcore/SR fix/Opticores fix/mesa dll）。

@@ -22,7 +22,7 @@
 ## 1. 目标与判据（task-8）
 
 - 目标：①评估本机能否 MSVC/meson/ninja 编译 Mesa Windows opengl32.dll（缺什么工具/装哪里/离线方案）；②能编就开 ENABLE_SHADER_CACHE/GPL/O3 等产出可替换 DLL（附导出表/sha256/依赖校验）；③不能编就量化替代方案；④A/B BENCH-REQUEST。
-- 硬约束：只写 `<项目根目录>/mesaopt/`；实例 `<MC目录>/versions/DSH-Zink` 由 Lead 独占（我不启动游戏、不改实例）；任何 DLL 由 Lead 实测后才替换；不得破坏 NVIDIA/AMD/Intel 三家可跑（Mesa zink 纯 Vulkan、本后端纯 Win32 文件 IO，无 GPU 专有分支）。
+- 硬约束：只写 `<项目根目录>/mesaopt/`；实例 `<MC目录>/versions/mc-zink` 由 Lead 独占（我不启动游戏、不改实例）；任何 DLL 由 Lead 实测后才替换；不得破坏 NVIDIA/AMD/Intel 三家可跑（Mesa zink 纯 Vulkan、本后端纯 Win32 文件 IO，无 GPU 专有分支）。
 
 ## 2. 环境与工具链（全部已就位，可复现 `[已验证]`）
 

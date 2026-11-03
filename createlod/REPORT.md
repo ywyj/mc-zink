@@ -137,7 +137,7 @@ C:\WINDOWS\System32\cmd.exe /c <项目根目录>\createlod\mod\build.bat
 
 ```bat
 :: 反编译取证（vineflower 1.10.1 + 实例 java21；先复制 jar 为 ASCII 名）
-set JAVA=<MC目录>\versions\DSH-Zink\runtime\java21\bin\java.exe
+set JAVA=<MC目录>\versions\mc-zink\runtime\java21\bin\java.exe
 set VF=<项目根目录>\_tools\gradle-home\caches\modules-2\files-2.1\org.vineflower\vineflower\1.10.1\4f48c5947b21f9ebc743e7c80215ee839d3dc668\vineflower-1.10.1.jar
 %JAVA% -Xmx2G -jar %VF% --folder --silent <项目根目录>\createlod\work\create.jar <项目根目录>\createlod\work\decomp\create
 ```
@@ -160,7 +160,7 @@ python -X utf8 work\gen_evidence.py
 
 ## 11. 合规声明
 
-- 我（createlod）**从未修改** `<MC目录>/versions/DSH-Zink` 下任何文件；只做过只读操作（列 mods、读 config、读 jar）。
+- 我（createlod）**从未修改** `<MC目录>/versions/mc-zink` 下任何文件；只做过只读操作（列 mods、读 config、读 jar）。
 - 我**从未启动**游戏或 bench；未改过 `config/super_resolution/config.toml`；01:36 的 backend=VULKAN/upscale_algo=dlss 配置漂移与我无关。
 - 我的构建/产物全部在 `<项目根目录>/createlod/` 下；一切实例实验走 [BENCH-REQUEST] 交 Lead。
 

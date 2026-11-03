@@ -1,4 +1,4 @@
-# DSH-Zink SR 实验版（X2 帧生成）覆盖片段 v1.2.0
+# mc-zink SR 实验版（X2 帧生成）覆盖片段 v1.2.0
 # 适用：sr-fg 修复 Streamline interposer 签名校验后，且日志出现
 #       "Frame generation backend negotiation: fg=wisteria:..." 时。
 # 前置检查（logs/latest.log）：
