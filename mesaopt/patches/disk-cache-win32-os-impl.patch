@@ -1,0 +1,742 @@
+diff --git "a/src/util/disk_cache_os.c" "b/src/util/disk_cache_os.c"
+index 15b6a81..b221b52 100644
+--- "a/src/util/disk_cache_os.c"
++++ "b/src/util/disk_cache_os.c"
+@@ -82,7 +82,735 @@ disk_cache_get_function_identifier(void *ptr, blake3_hasher *ctx)
+ #ifdef ENABLE_SHADER_CACHE
+ 
+ #if DETECT_OS_WINDOWS
+-/* TODO: implement disk cache support on windows */
++
++/* [dsh-mesaopt] Win32 disk cache backend (upstream only had a TODO stub here).
++ * Layout: <base>/<driver_id>/<key[0:2]>/<key-hex>.bin
++ *   <base> = MESA_SHADER_CACHE_DIR (or MESA_GLSL_CACHE_DIR), else
++ *            %LOCALAPPDATA%/mesa_shader_cache
++ * Entry = struct cache_entry_file_data + payload (deflate-compressed unless the
++ * driver disables compression).  Index and total size are kept in memory; LRU
++ * eviction does a directory scan for the oldest file.  Every failure path is a
++ * cache miss, never a crash.
++ */
++
++#include <windows.h>
++#include <wchar.h>
++
++#include "util/compress.h"
++#include "util/crc32.h"
++#include "util/os_misc.h"
++#include "util/ralloc.h"
++#include "util/u_atomic.h"
++#include "util/u_debug.h"
++
++/* ------------------------------- helpers -------------------------------- */
++
++static char *
++dup_str(const char *s)
++{
++   size_t n = strlen(s) + 1;
++   char *r = malloc(n);
++
++   if (r)
++      memcpy(r, s, n);
++   return r;
++}
++
++static wchar_t *
++utf8_to_wide(const char *s)
++{
++   int n;
++   wchar_t *w;
++
++   if (!s)
++      return NULL;
++
++   n = MultiByteToWideChar(CP_UTF8, 0, s, -1, NULL, 0);
++   if (n <= 0)
++      return NULL;
++
++   w = malloc(sizeof(wchar_t) * (size_t)n);
++   if (!w)
++      return NULL;
++
++   if (MultiByteToWideChar(CP_UTF8, 0, s, -1, w, n) <= 0) {
++      free(w);
++      return NULL;
++   }
++   return w;
++}
++
++static char *
++wide_to_utf8(const wchar_t *w)
++{
++   int n;
++   char *s;
++
++   if (!w)
++      return NULL;
++
++   n = WideCharToMultiByte(CP_UTF8, 0, w, -1, NULL, 0, NULL, NULL);
++   if (n <= 0)
++      return NULL;
++
++   s = malloc((size_t)n);
++   if (!s)
++      return NULL;
++
++   if (WideCharToMultiByte(CP_UTF8, 0, w, -1, s, n, NULL, NULL) <= 0) {
++      free(s);
++      return NULL;
++   }
++   return s;
++}
++
++static char *
++path_join(const char *a, const char *b)
++{
++   size_t la, lb;
++   bool sep;
++   char *r;
++
++   if (!a || !b)
++      return NULL;
++
++   la = strlen(a);
++   lb = strlen(b);
++   sep = la > 0 && a[la - 1] != '/' && a[la - 1] != '\\';
++
++   r = malloc(la + (sep ? 1 : 0) + lb + 1);
++   if (!r)
++      return NULL;
++
++   memcpy(r, a, la);
++   if (sep)
++      r[la++] = '/';
++   memcpy(r + la, b, lb);
++   r[la + lb] = '\0';
++   return r;
++}
++
++static bool
++mkdir_one(const wchar_t *path)
++{
++   if (CreateDirectoryW(path, NULL))
++      return true;
++   return GetLastError() == ERROR_ALREADY_EXISTS;
++}
++
++static bool
++mkdir_recursive(const char *path_utf8)
++{
++   wchar_t *w = utf8_to_wide(path_utf8);
++   wchar_t *p;
++   bool ok = true;
++
++   if (!w)
++      return false;
++
++   for (p = w; *p; p++) {
++      wchar_t save;
++      size_t len;
++      bool is_root;
++
++      if (*p != L'/' && *p != L'\\')
++         continue;
++
++      save = *p;
++      *p = 0;
++      len = wcslen(w);
++      is_root = len <= 2 && w[1] == L':';   /* "C:" / "C:/" always exists */
++      if (len > 0 && !is_root && !mkdir_one(w))
++         ok = false;
++      *p = save;
++   }
++
++   if (ok && !mkdir_one(w))
++      ok = false;
++
++   free(w);
++   return ok;
++}
++
++static char *
++sanitize_component(const char *s)
++{
++   size_t n, i;
++   char *r;
++
++   if (!s || !s[0])
++      return NULL;
++
++   n = strlen(s);
++   r = malloc(n + 1);
++   if (!r)
++      return NULL;
++
++   for (i = 0; i < n; i++) {
++      unsigned char c = (unsigned char)s[i];
++      if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
++          (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.')
++         r[i] = (char)c;
++      else
++         r[i] = '_';
++   }
++   r[n] = '\0';
++   return r;
++}
++
++static char *
++get_localappdata_utf8(void)
++{
++   return wide_to_utf8(_wgetenv(L"LOCALAPPDATA"));
++}
++
++static void
++key_to_hex(const cache_key key, char *out)
++{
++   static const char hex[] = "0123456789abcdef";
++   unsigned i;
++
++   for (i = 0; i < CACHE_KEY_SIZE; i++) {
++      out[i * 2] = hex[key[i] >> 4];
++      out[i * 2 + 1] = hex[key[i] & 0xf];
++   }
++   out[CACHE_KEY_SIZE * 2] = '\0';
++}
++
++/* ---------------------------- configuration ----------------------------- */
++
++bool
++disk_cache_enabled(void)
++{
++   const char *mode = os_get_option("MESA_SHADER_CACHE_MODE");
++
++   if (mode && strcmp(mode, "disabled") == 0)
++      return false;
++
++   return !debug_get_bool_option("MESA_SHADER_CACHE_DISABLE", false);
++}
++
++const char *
++disk_cache_generate_cache_dir(void *mem_ctx, const char *gpu_name,
++                              const char *driver_id,
++                              const char *cache_dir_name_custom,
++                              enum disk_cache_type cache_type, bool mkdir)
++{
++   const char *dir_opt = os_get_option("MESA_SHADER_CACHE_DIR");
++   char *base = NULL, *sub, *path;
++   const char *ret;
++
++   (void)gpu_name;
++   (void)cache_type;
++
++   if (!dir_opt)
++      dir_opt = os_get_option("MESA_GLSL_CACHE_DIR");
++
++   if (dir_opt && dir_opt[0]) {
++      base = dup_str(dir_opt);
++   } else {
++      char *lad = get_localappdata_utf8();
++
++      if (lad) {
++         base = path_join(lad, CACHE_DIR_NAME);
++         free(lad);
++      }
++      if (!base) {
++         const char *tmp = getenv("TEMP");
++         base = path_join(tmp && tmp[0] ? tmp : ".", CACHE_DIR_NAME);
++      }
++   }
++   if (!base)
++      return NULL;
++
++   sub = sanitize_component(cache_dir_name_custom ? cache_dir_name_custom
++                                                  : driver_id);
++   path = sub ? path_join(base, sub) : NULL;
++   free(base);
++   free(sub);
++   if (!path)
++      return NULL;
++
++   if (mkdir && !mkdir_recursive(path)) {
++      free(path);
++      return NULL;
++   }
++
++   ret = ralloc_strdup(mem_ctx, path);
++   free(path);
++   return ret;
++}
++
++void
++disk_cache_touch_cache_user_marker(char *path)
++{
++   (void)path;
++}
++
++void
++disk_cache_delete_old_cache(void)
++{
++}
++
++bool
++disk_cache_mmap_cache_index(void *mem_ctx, struct disk_cache *cache)
++{
++   (void)mem_ctx;
++
++   if (!cache->path)
++      return false;
++
++   cache->stored_keys = calloc(CACHE_INDEX_MAX_KEYS, CACHE_KEY_SIZE);
++   cache->size = calloc(1, sizeof(*cache->size));
++   if (!cache->stored_keys || !cache->size) {
++      free(cache->stored_keys);
++      free(cache->size);
++      cache->stored_keys = NULL;
++      cache->size = NULL;
++      return false;
++   }
++
++   p_atomic_set(&cache->size->value, 0);
++   cache->size_is_valid = false;
++   return true;
++}
++
++void
++disk_cache_destroy_mmap(struct disk_cache *cache)
++{
++   free(cache->stored_keys);
++   cache->stored_keys = NULL;
++   free(cache->size);
++   cache->size = NULL;
++}
++
++bool
++disk_cache_size_is_valid(struct disk_cache *cache)
++{
++   return cache->size_is_valid;
++}
++
++/* ---------------------------- directory scans --------------------------- */
++
++struct cache_scan {
++   uint64_t total_size;
++   bool want_lru;
++   bool have_lru;
++   FILETIME lru_time;
++   char *lru_file;
++};
++
++static void
++scan_dir(const wchar_t *dir, struct cache_scan *scan)
++{
++   wchar_t *pattern;
++   WIN32_FIND_DATAW fd;
++   HANDLE h;
++
++   pattern = malloc((wcslen(dir) + 3) * sizeof(wchar_t));
++   if (!pattern)
++      return;
++
++   wcscpy(pattern, dir);
++   wcscat(pattern, L"/*");
++
++   h = FindFirstFileW(pattern, &fd);
++   free(pattern);
++   if (h == INVALID_HANDLE_VALUE)
++      return;
++
++   do {
++      size_t len;
++      wchar_t *full;
++
++      if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0)
++         continue;
++
++      len = wcslen(dir) + wcslen(fd.cFileName) + 2;
++      full = malloc(len * sizeof(wchar_t));
++      if (!full)
++         continue;
++      swprintf(full, len, L"%ls/%ls", dir, fd.cFileName);
++
++      if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
++         scan_dir(full, scan);
++      } else {
++         uint64_t fsize = ((uint64_t)fd.nFileSizeHigh << 32) | fd.nFileSizeLow;
++
++         scan->total_size += fsize;
++
++         if (scan->want_lru &&
++             (!scan->have_lru ||
++              CompareFileTime(&fd.ftLastWriteTime, &scan->lru_time) < 0)) {
++            char *u8 = wide_to_utf8(full);
++
++            if (u8) {
++               free(scan->lru_file);
++               scan->lru_file = u8;
++               scan->lru_time = fd.ftLastWriteTime;
++               scan->have_lru = true;
++            }
++         }
++      }
++
++      free(full);
++   } while (FindNextFileW(h, &fd));
++
++   FindClose(h);
++}
++
++static void
++cache_size_sub(struct disk_cache *cache, uint64_t n)
++{
++   uint64_t cur;
++
++   if (!cache->size || !n)
++      return;
++
++   cur = p_atomic_read(&cache->size->value);
++   for (;;) {
++      uint64_t next = cur > n ? cur - n : 0;
++      uint64_t prev = p_atomic_cmpxchg(&cache->size->value, cur, next);
++
++      if (prev == cur)
++         return;
++      cur = prev;
++   }
++}
++
++void
++disk_cache_recompute_size(struct disk_cache *cache)
++{
++   struct cache_scan scan;
++   wchar_t *wpath;
++
++   if (!cache->path || !cache->size)
++      return;
++
++   memset(&scan, 0, sizeof(scan));
++
++   wpath = utf8_to_wide(cache->path);
++   if (wpath) {
++      scan_dir(wpath, &scan);
++      free(wpath);
++   }
++
++   p_atomic_set(&cache->size->value, scan.total_size);
++   cache->size_is_valid = true;
++}
++
++void
++disk_cache_evict_item(struct disk_cache *cache, char *filename)
++{
++   wchar_t *w;
++   WIN32_FILE_ATTRIBUTE_DATA ad;
++   uint64_t fsize = 0;
++   bool removed;
++
++   if (!filename)
++      return;
++
++   w = utf8_to_wide(filename);
++   if (!w)
++      return;
++
++   if (GetFileAttributesExW(w, GetFileExInfoStandard, &ad))
++      fsize = ((uint64_t)ad.nFileSizeHigh << 32) | ad.nFileSizeLow;
++
++   removed = DeleteFileW(w) != 0;
++   free(w);
++
++   if (removed)
++      cache_size_sub(cache, fsize);
++}
++
++bool
++disk_cache_evict_lru_item(struct disk_cache *cache)
++{
++   struct cache_scan scan;
++   wchar_t *wpath;
++   bool evicted = false;
++
++   if (!cache->path)
++      return false;
++
++   memset(&scan, 0, sizeof(scan));
++   scan.want_lru = true;
++
++   wpath = utf8_to_wide(cache->path);
++   if (!wpath)
++      return false;
++
++   scan_dir(wpath, &scan);
++   free(wpath);
++
++   if (scan.lru_file) {
++      disk_cache_evict_item(cache, scan.lru_file);
++      free(scan.lru_file);
++      evicted = true;
++   }
++
++   return evicted;
++}
++
++/* ------------------------------ entry IO -------------------------------- */
++
++char *
++disk_cache_get_cache_filename(struct disk_cache *cache, const cache_key key)
++{
++   char hex[CACHE_KEY_SIZE * 2 + 1];
++   char subdir[3];
++   char name[CACHE_KEY_SIZE * 2 + 8];
++   char *dir, *res;
++
++   if (!cache->path)
++      return NULL;
++
++   key_to_hex(key, hex);
++   subdir[0] = hex[0];
++   subdir[1] = hex[1];
++   subdir[2] = '\0';
++
++   dir = path_join(cache->path, subdir);
++   if (!dir)
++      return NULL;
++
++   snprintf(name, sizeof(name), "%s.bin", hex);
++   res = path_join(dir, name);
++   free(dir);
++   return res;
++}
++
++static bool
++write_all(HANDLE h, const void *data, size_t size)
++{
++   const uint8_t *p = data;
++
++   while (size) {
++      DWORD chunk = size > 0x40000000u ? 0x40000000u : (DWORD)size;
++      DWORD written = 0;
++
++      if (!WriteFile(h, p, chunk, &written, NULL) || written == 0)
++         return false;
++
++      p += written;
++      size -= written;
++   }
++   return true;
++}
++
++void
++disk_cache_write_item_to_disk(struct disk_cache_put_job *dc_job, char *filename)
++{
++   struct disk_cache *cache = dc_job->cache;
++   const uint8_t *payload = dc_job->data;
++   size_t payload_size = dc_job->size;
++   uint32_t uncompressed_size = 0;
++   uint8_t *compressed = NULL;
++   struct cache_entry_file_data hdr;
++   char *slash;
++   wchar_t *w;
++
++   if (!cache->path || !filename || !cache->size)
++      return;
++
++   /* Make sure the two-part directory (<key[0:2]>) exists. */
++   slash = strrchr(filename, '/');
++   if (slash) {
++      char save = *slash;
++
++      *slash = '\0';
++      mkdir_recursive(filename);
++      *slash = save;
++   }
++
++   if (!cache->compression_disabled && dc_job->size > 64) {
++      size_t max_out = util_compress_max_compressed_len(dc_job->size);
++
++      compressed = malloc(max_out);
++      if (compressed) {
++         size_t csize = util_compress_deflate(dc_job->data, dc_job->size,
++                                             compressed, max_out);
++
++         if (csize > 0 && csize < dc_job->size) {
++            payload = compressed;
++            payload_size = csize;
++            uncompressed_size = (uint32_t)dc_job->size;
++         }
++      }
++   }
++
++   hdr.crc32 = util_hash_crc32(payload, payload_size);
++   hdr.uncompressed_size = uncompressed_size;
++
++   w = utf8_to_wide(filename);
++   if (w) {
++      HANDLE h = CreateFileW(w, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
++                             FILE_ATTRIBUTE_NORMAL, NULL);
++
++      free(w);
++
++      if (h != INVALID_HANDLE_VALUE) {
++         bool ok = write_all(h, &hdr, sizeof(hdr)) &&
++                   write_all(h, payload, payload_size);
++
++         CloseHandle(h);
++
++         if (ok)
++            p_atomic_add(&cache->size->value,
++                         (uint64_t)(sizeof(hdr) + payload_size));
++      }
++   }
++
++   free(compressed);
++}
++
++void *
++disk_cache_load_item(struct disk_cache *cache, char *filename, size_t *size)
++{
++   wchar_t *w;
++   HANDLE h;
++   LARGE_INTEGER file_size_ll;
++   size_t file_size, got = 0;
++   uint8_t *buf;
++   struct cache_entry_file_data hdr;
++   const uint8_t *payload;
++   size_t payload_size;
++   void *data;
++
++   (void)cache;
++
++   if (size)
++      *size = 0;
++   if (!filename)
++      return NULL;
++
++   w = utf8_to_wide(filename);
++   if (!w)
++      return NULL;
++
++   h = CreateFileW(w, GENERIC_READ,
++                   FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
++                   NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
++   free(w);
++   if (h == INVALID_HANDLE_VALUE)
++      return NULL;
++
++   if (!GetFileSizeEx(h, &file_size_ll) ||
++       file_size_ll.QuadPart < (LONGLONG)sizeof(hdr)) {
++      CloseHandle(h);
++      return NULL;
++   }
++
++   file_size = (size_t)file_size_ll.QuadPart;
++   buf = malloc(file_size);
++   if (!buf) {
++      CloseHandle(h);
++      return NULL;
++   }
++
++   while (got < file_size) {
++      DWORD chunk = (file_size - got) > 0x40000000u ? 0x40000000u
++                                                    : (DWORD)(file_size - got);
++      DWORD n = 0;
++
++      if (!ReadFile(h, buf + got, chunk, &n, NULL) || n == 0)
++         break;
++      got += n;
++   }
++   CloseHandle(h);
++
++   if (got != file_size) {
++      free(buf);
++      return NULL;
++   }
++
++   memcpy(&hdr, buf, sizeof(hdr));
++   payload = buf + sizeof(hdr);
++   payload_size = file_size - sizeof(hdr);
++
++   if (util_hash_crc32(payload, payload_size) != hdr.crc32) {
++      free(buf);
++      return NULL;
++   }
++
++   if (hdr.uncompressed_size) {
++      data = malloc(hdr.uncompressed_size);
++      if (!data ||
++          !util_compress_inflate(payload, payload_size, data,
++                                 hdr.uncompressed_size)) {
++         free(data);
++         free(buf);
++         return NULL;
++      }
++      if (size)
++         *size = hdr.uncompressed_size;
++   } else {
++      data = malloc(payload_size ? payload_size : 1);
++      if (!data) {
++         free(buf);
++         return NULL;
++      }
++      memcpy(data, payload, payload_size);
++      if (size)
++         *size = payload_size;
++   }
++
++   free(buf);
++   return data;
++}
++
++/* ------------- unsupported backends (single-file FOZ / database) --------- */
++
++void *
++disk_cache_load_item_foz(struct disk_cache *cache, const cache_key key,
++                         size_t *size)
++{
++   (void)cache;
++   (void)key;
++   (void)size;
++   return NULL;
++}
++
++bool
++disk_cache_write_item_to_disk_foz(struct disk_cache_put_job *dc_job)
++{
++   (void)dc_job;
++   return false;
++}
++
++bool
++disk_cache_load_cache_index_foz(void *mem_ctx, struct disk_cache *cache)
++{
++   (void)mem_ctx;
++   (void)cache;
++   return false;
++}
++
++void *
++disk_cache_db_load_item(struct disk_cache *cache, const cache_key key,
++                        size_t *size)
++{
++   (void)cache;
++   (void)key;
++   (void)size;
++   return NULL;
++}
++
++bool
++disk_cache_db_write_item_to_disk(struct disk_cache_put_job *dc_job)
++{
++   (void)dc_job;
++   return false;
++}
++
++bool
++disk_cache_db_load_cache_index(void *mem_ctx, struct disk_cache *cache)
++{
++   (void)mem_ctx;
++   (void)cache;
++   return false;
++}
+ 
+ #else
+ 
+

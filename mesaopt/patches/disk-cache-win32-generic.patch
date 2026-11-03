@@ -1,0 +1,174 @@
+diff --git "a/src/util/disk_cache.c" "b/src/util/disk_cache.c"
+index 3aaa4a8..cda914f 100644
+--- "a/src/util/disk_cache.c"
++++ "b/src/util/disk_cache.c"
+@@ -24,10 +24,18 @@
+ #ifdef ENABLE_SHADER_CACHE
+ 
+ #include <ctype.h>
+-#include <ftw.h>
+ #include <string.h>
+ #include <stdlib.h>
+ #include <stdio.h>
++#include <inttypes.h>
++
++#include "util/detect_os.h"
++
++/* The POSIX-only backends (single-file FOZ and the multipart database) are not
++ * implemented for Windows; the Win32 backend in disk_cache_os.c only supports
++ * the multi-file layout. */
++#if !DETECT_OS_WINDOWS
++#include <ftw.h>
+ #include <sys/file.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
+@@ -35,7 +43,7 @@
+ #include <fcntl.h>
+ #include <errno.h>
+ #include <dirent.h>
+-#include <inttypes.h>
++#endif
+ 
+ #include "util/compress.h"
+ #include "util/crc32.h"
+@@ -139,6 +147,7 @@ disk_cache_type_create(const char *gpu_name,
+    if (strcmp(driver_id, "make_check_uncompressed") == 0)
+       cache->compression_disabled = true;
+ 
++#if !DETECT_OS_WINDOWS
+    if (cache_type == DISK_CACHE_SINGLE_FILE) {
+       if (!disk_cache_load_cache_index_foz(local, cache))
+          goto path_fail;
+@@ -146,6 +155,7 @@ disk_cache_type_create(const char *gpu_name,
+       if (!disk_cache_db_load_cache_index(local, cache))
+          goto path_fail;
+    }
++#endif
+ 
+    if (!os_get_option("MESA_SHADER_CACHE_DIR") && !os_get_option("MESA_GLSL_CACHE_DIR"))
+       disk_cache_touch_cache_user_marker(cache->path);
+@@ -160,10 +170,12 @@ disk_cache_type_create(const char *gpu_name,
+ 
+    cache->max_size = max_size;
+ 
+-   if (cache->type == DISK_CACHE_DATABASE)
+-      mesa_cache_db_multipart_set_size_limit(&cache->cache_db, cache->max_size);
+-   else if (cache->type == DISK_CACHE_MULTI_FILE && !disk_cache_size_is_valid(cache))
++   if (cache->type == DISK_CACHE_MULTI_FILE && !disk_cache_size_is_valid(cache))
+       disk_cache_recompute_size(cache);
++#if !DETECT_OS_WINDOWS
++   else if (cache->type == DISK_CACHE_DATABASE)
++      mesa_cache_db_multipart_set_size_limit(&cache->cache_db, cache->max_size);
++#endif
+ 
+    if (!disk_cache_init_queue(cache))
+       goto fail;
+@@ -241,6 +253,16 @@ disk_cache_create(const char *gpu_name, const char *driver_id,
+       return NULL;
+    }
+ 
++#if DETECT_OS_WINDOWS
++   /* Only the multi-file backend has a Windows implementation (see
++    * disk_cache_os.c); FOZ and the multipart database are POSIX-only. */
++   if (cache_type != DISK_CACHE_MULTI_FILE) {
++      if (!debug_get_bool_option("MESA_DISK_CACHE_MULTI_FILE", true))
++         return NULL;
++      cache_type = DISK_CACHE_MULTI_FILE;
++   }
++#endif
++
+    max_size_str = os_get_option("MESA_SHADER_CACHE_MAX_SIZE");
+ 
+    if (!max_size_str) {
+@@ -298,6 +320,7 @@ disk_cache_create(const char *gpu_name, const char *driver_id,
+     * cache.  At first we will check cache entry presence in the RO caches and
+     * if entry isn't found there, then we'll fall back to the RW cache.
+     */
++#if !DETECT_OS_WINDOWS
+    if (cache_type != DISK_CACHE_SINGLE_FILE && !cache->path_init_failed &&
+        debug_get_bool_option("MESA_DISK_CACHE_COMBINE_RW_WITH_RO_FOZ", false)) {
+ 
+@@ -310,6 +333,7 @@ disk_cache_create(const char *gpu_name, const char *driver_id,
+                                                    DISK_CACHE_SINGLE_FILE,
+                                                    max_size);
+    }
++#endif
+ 
+    return cache;
+ }
+@@ -320,7 +344,12 @@ disk_cache_create_custom(const char *gpu_name, const char *driver_id,
+                          uint32_t max_size)
+ {
+    return disk_cache_type_create(gpu_name, driver_id, cache_dir_name, 0,
+-                                 DISK_CACHE_DATABASE, max_size);
++#if DETECT_OS_WINDOWS
++                                 DISK_CACHE_MULTI_FILE,
++#else
++                                 DISK_CACHE_DATABASE,
++#endif
++                                 max_size);
+ }
+ 
+ void
+@@ -339,11 +368,13 @@ disk_cache_destroy(struct disk_cache *cache)
+       if (cache->foz_ro_cache)
+          disk_cache_destroy(cache->foz_ro_cache);
+ 
++#if !DETECT_OS_WINDOWS
+       if (cache->type == DISK_CACHE_SINGLE_FILE)
+          foz_destroy(&cache->foz_db);
+ 
+       if (cache->type == DISK_CACHE_DATABASE)
+          mesa_cache_db_multipart_close(&cache->cache_db);
++#endif
+ 
+       disk_cache_destroy_mmap(cache);
+    }
+@@ -360,10 +391,12 @@ disk_cache_wait_for_idle(struct disk_cache *cache)
+ void
+ disk_cache_remove(struct disk_cache *cache, const cache_key key)
+ {
++#if !DETECT_OS_WINDOWS
+    if (cache->type == DISK_CACHE_DATABASE) {
+       mesa_cache_db_multipart_entry_remove(&cache->cache_db, key);
+       return;
+    }
++#endif
+ 
+    char *filename = disk_cache_get_cache_filename(cache, key);
+    if (filename == NULL) {
+@@ -456,10 +489,12 @@ cache_put(void *job, void *gdata, int thread_index)
+ 
+    if (dc_job->cache->blob_put_cb) {
+       blob_put_compressed(dc_job->cache, dc_job->key, dc_job->data, dc_job->size);
++#if !DETECT_OS_WINDOWS
+    } else if (dc_job->cache->type == DISK_CACHE_SINGLE_FILE) {
+       disk_cache_write_item_to_disk_foz(dc_job);
+    } else if (dc_job->cache->type == DISK_CACHE_DATABASE) {
+       disk_cache_db_write_item_to_disk(dc_job);
++#endif
+    } else if (dc_job->cache->type == DISK_CACHE_MULTI_FILE) {
+       filename = disk_cache_get_cache_filename(dc_job->cache, dc_job->key);
+       if (filename == NULL)
+@@ -611,16 +646,20 @@ disk_cache_get(struct disk_cache *cache, const cache_key key, size_t *size)
+    if (size)
+       *size = 0;
+ 
++#if !DETECT_OS_WINDOWS
+    if (cache->foz_ro_cache)
+       buf = disk_cache_load_item_foz(cache->foz_ro_cache, key, size);
++#endif
+ 
+    if (!buf) {
+       if (cache->blob_get_cb) {
+          buf = blob_get_compressed(cache, key, size);
++#if !DETECT_OS_WINDOWS
+       } else if (cache->type == DISK_CACHE_SINGLE_FILE) {
+          buf = disk_cache_load_item_foz(cache, key, size);
+       } else if (cache->type == DISK_CACHE_DATABASE) {
+          buf = disk_cache_db_load_item(cache, key, size);
++#endif
+       } else if (cache->type == DISK_CACHE_MULTI_FILE) {
+          char *filename = disk_cache_get_cache_filename(cache, key);
+          if (filename)
+

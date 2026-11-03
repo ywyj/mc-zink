@@ -1,0 +1,14 @@
+# 无光影组合（Iris 的 shader 关闭，但 SR 仍然工作）— config/super_resolution/config.toml 最小覆盖片段
+# 无 shaderpack 时不需要“不兼容光影包支持”，关掉可减少 SR 注入分支；compat_shader_compiler 仍建议 true。
+compat_shader_compiler = true
+enable_unstable_incompatible_shader_support = false
+enable_iris_extension = false
+auto_hide_shaderpack_disabled_algorithms = false
+
+[frame_generation]
+mode = "OFF"
+
+[debug]
+enable_debug = false
+enable_present_indicator = false
+enable_detailed_profiling = false

@@ -1,0 +1,48 @@
+From 1ca365b2ee1be88a26fe4f0eb475c062d4ae5ca6 Mon Sep 17 00:00:00 2001
+From: Mike Blumenkrantz <michael.blumenkrantz@gmail.com>
+Date: Sun, 4 Oct 2026 11:31:05 -0400
+Subject: [PATCH] tc: only scan in-flight buffer lists in
+ tc_is_buffer_on_busy_list
+
+lists are used and flushed in ring order, so stop at the first one
+which the driver has already flushed instead of checking them all
+
+Generated-by: LLM
+Part-of: <https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/45178>
+---
+ src/gallium/auxiliary/util/u_threaded_context.c | 14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/src/gallium/auxiliary/util/u_threaded_context.c b/src/gallium/auxiliary/util/u_threaded_context.c
+index 13e48fd8bb97..d2695892eeab 100644
+--- a/src/gallium/auxiliary/util/u_threaded_context.c
++++ b/src/gallium/auxiliary/util/u_threaded_context.c
+@@ -1083,14 +1083,22 @@ tc_is_buffer_on_busy_list(const struct threaded_context *tc, const struct thread
+ {
+    uint32_t id_hash = tbuf->buffer_id_unique & TC_BUFFER_ID_MASK;
+ 
+-   for (unsigned i = 0; i < TC_MAX_BUFFER_LISTS; i++) {
++   unsigned i = tc->next_buf_list;
++
++   for (unsigned n = 0; n < TC_MAX_BUFFER_LISTS; n++) {
+       struct tc_buffer_list *buf_list = (void*)&tc->buffer_lists[i];
+ 
++      /* Buffer lists are used and flushed in ring order, so all lists which are older than
++       * a flushed one have been flushed too. */
++      if (util_queue_fence_is_signalled(&buf_list->driver_flushed_fence))
++         break;
++
+       /* If the buffer is referenced by a batch that hasn't been flushed (by tc or the driver),
+        * then the buffer is considered busy. */
+-      if (!util_queue_fence_is_signalled(&buf_list->driver_flushed_fence) &&
+-          BITSET_TEST(buf_list->buffer_list, id_hash))
++      if (BITSET_TEST(buf_list->buffer_list, id_hash))
+          return true;
++
++      i = i ? i - 1 : TC_MAX_BUFFER_LISTS - 1;
+    }
+    return false;
+ }
+-- 
+GitLab
+

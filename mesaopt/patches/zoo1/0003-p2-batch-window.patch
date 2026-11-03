@@ -1,0 +1,20 @@
+--- a/src/gallium/drivers/zink/zink_batch.c
++++ b/src/gallium/drivers/zink/zink_batch.c
+@@ -1,4 +1,5 @@
+ #include "zink_batch.h"
++#include "zink_zoo.h"
+ #include "mesa/main/glcost.h"
+ #include "zink_context.h"
+ #include "zink_descriptors.h"
+@@ -625,7 +626,10 @@
+    } else if (bs->ctx->batch_states_count > 5000) {
+       /* throttle in case something crazy is happening */
+       zink_screen_timeline_wait(screen, bs->fence.batch_id - 2500, OS_TIMEOUT_INFINITE);
+-   } else if (screen->curr_batch - screen->last_finished > 5) {
++   } else if (screen->curr_batch - screen->last_finished > zink_zoo_batch_window) {
++      /* [dsh-mesaopt ZOO P2] window is MESA_ZINK_BATCH_WINDOW (default 5 =
++       * upstream). Larger window = allow more in-flight batches before the
++       * throttling timeline wait. */
+       /* try to avoid ooming by regularly checking for batch completion */
+       zink_screen_timeline_wait(screen, screen->last_finished + 1, 0);
+    }

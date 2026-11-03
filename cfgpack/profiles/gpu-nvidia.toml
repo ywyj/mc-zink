@@ -1,0 +1,23 @@
+# NVIDIA 档（RTX 3060 Laptop / Ampere，本机当前显卡）— config/super_resolution/config.toml 最小覆盖片段
+# 用法见 profiles/README.md；未列出的键保持原值。
+# 结论：zink 下走纯 GL 着色器算法 fsr1 最稳；DLSS/XeSS/FSR4 依赖 GL↔VK/D3D12 外部内存互操作，zink 下未验证/不可用；
+#       RTX 3060 是 Ampere（无 Optical Flow 帧生成硬件），DLSS-G 即便没有 zink 也不可用 → FG 必须 OFF。
+upscale_algo = "fsr1"
+upscale_ratio = 1.5
+sharpness = 1.0
+internal_texture_format = "AUTO"
+enable_upscale = true
+
+[presentation]
+backend = "VULKAN"
+
+[frame_generation]
+mode = "OFF"
+provider = "superresolution:auto"
+backend = "wisteria:streamline"
+
+[low_latency]
+mode = "superresolution:nv_reflex"
+
+[low_latency.nv_reflex]
+mode = "ON"

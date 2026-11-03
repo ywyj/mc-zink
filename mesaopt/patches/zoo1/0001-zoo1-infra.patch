@@ -1,0 +1,97 @@
+--- a/src/gallium/drivers/zink/zink_screen.c
++++ b/src/gallium/drivers/zink/zink_screen.c
+@@ -46,6 +46,7 @@
+ #include "zink_query.h"
+ #include "zink_resource.h"
+ #include "zink_state.h"
++#include "zink_zoo.h"
+ #include "nir_to_spirv/nir_to_spirv.h" // for SPIRV_VERSION
+ 
+ #include "util/u_debug.h"
+@@ -3423,6 +3424,25 @@
+    return "v2024-08-08-00";
+ }
+ 
++/* [dsh-mesaopt ZOO] runtime patch-zoo switches; definitions are shared with
++ * zink_kopper.c / zink_batch.c through zink_zoo.h.  All defaults reproduce the
++ * original code path, so a no-env run is the same behavior as dist/z0v1.
++ */
++bool zink_zoo_sync_present = false;
++bool zink_zoo_no_fb_wait = false;
++unsigned zink_zoo_batch_window = 5;
++
++void
++zink_zoo_init(void)
++{
++   zink_zoo_sync_present = debug_get_bool_option("MESA_ZINK_SYNC_PRESENT", false) ||
++                           debug_get_bool_option("MESA_ZINK_NO_ASYNC_PRESENT", false);
++   zink_zoo_no_fb_wait = debug_get_bool_option("MESA_ZINK_NO_FB_WAIT", false);
++   int64_t zoo_window = debug_get_num_option("MESA_ZINK_BATCH_WINDOW", 5);
++   if (zoo_window >= 2 && zoo_window <= 1024)
++      zink_zoo_batch_window = (unsigned)zoo_window;
++}
++
+ static struct zink_screen *
+ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev_major, int64_t dev_minor, uint64_t adapter_luid)
+ {
+@@ -3462,6 +3482,9 @@
+ 
+    /* [dsh-mesaopt GLCOST] parse MESA_GLCOST bitmask (1=L1 entry, 2=L2 flush/present, 4=L3 submit) */
+    zink_glcost_init();
++
++   /* [dsh-mesaopt ZOO] parse MESA_ZINK_* patch-zoo switches once per screen */
++   zink_zoo_init();
+ 
+    u_trace_state_init();
+ 
+--- /dev/null
++++ b/src/gallium/drivers/zink/zink_zoo.h
+@@ -0,0 +1,48 @@
++/*
++ * [dsh-mesaopt ZOO] Runtime switches for the patch-zoo diagnostic DLL
++ * (artifact: dist/zoo1/opengl32.zoo1.dll).
++ *
++ * Every switch defaults to the original upstream behavior, so a run with no
++ * MESA_ZINK_* env set behaves exactly like the z0v1 diagnostic build.  Each
++ * switch is read exactly ONCE (zink_zoo_init() during screen creation) into a
++ * plain global; the hot paths only test a predictable global boolean/int.
++ *
++ * Env vars:
++ *   MESA_ZINK_SYNC_PRESENT=1      P1: force synchronous present
++ *                                 (cdt->async = false; zink_kopper.c)
++ *   MESA_ZINK_NO_ASYNC_PRESENT=1  P4: alias of P1 (same upstream mechanism:
++ *                                 cdt->async gates both async acquire waiting
++ *                                 and queuing of the present job, so a separate
++ *                                 "no async present only" toggle would leave
++ *                                 present_fence unsignalled and deadlock the
++ *                                 acquire path).  Kept as a second name for
++ *                                 A/B bookkeeping only.
++ *   MESA_ZINK_NO_FB_WAIT=1        P3: drop the per-frame
++ *                                 util_queue_fence_wait(&bs->flush_completed)
++ *                                 in zink_flush_frontbuffer (upstream 33f0fecc)
++ *   MESA_ZINK_BATCH_WINDOW=N      P2: in-flight batch count above which
++ *                                 post_submit throttles (upstream 5; valid
++ *                                 2..1024, invalid values keep 5)
++ *
++ * P5 (u_threaded_context generic CPU optimizations: upstream 32658eec,
++ * 5710cae1, 1ca365b2) is intentionally NOT compiled in: it is a pure
++ * optimization without a behavior switch.  Tracked as zoo_v2 candidate in
++ * notes/ZOO1.md.
++ */
++#ifndef ZINK_ZOO_H
++#define ZINK_ZOO_H
++
++#include <stdbool.h>
++
++/* P1 (+ P4 alias): synchronous present (original code keeps cdt->async). */
++extern bool zink_zoo_sync_present;
++
++/* P3: skip the per-frame flush_completed wait before presenting. */
++extern bool zink_zoo_no_fb_wait;
++
++/* P2: in-flight batch count threshold; default 5 = original behavior. */
++extern unsigned zink_zoo_batch_window;
++
++void zink_zoo_init(void);
++
++#endif /* ZINK_ZOO_H */

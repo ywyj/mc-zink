@@ -1,0 +1,41 @@
+diff --git "a/src/gallium/targets/wgl/meson.build.orig" "b/src/gallium/targets/wgl/meson.build"
+index 3a194b3..f61c67f 100644
+--- "a/src/gallium/targets/wgl/meson.build.orig"
++++ "b/src/gallium/targets/wgl/meson.build"
+@@ -11,14 +11,23 @@ wgl_def = custom_target(
+ )
+ 
+ gallium_wgl_name = get_option('gallium-wgl-dll-name')
+-libgallium_wgl = shared_library(
+-  gallium_wgl_name,
+-  ['wgl.c'],
+-  vs_module_defs : wgl_def,
++# [dsh-mesaopt] Build as a static library so all gallium/mesa/zink code can be
++# merged into a single self-contained opengl32.dll (the zinkgl MesaAgent preloads
++# %LOCALAPPDATA%/.../mesa/opengl32.dll and DLL search does not include that dir).
++# [dsh-mesaopt] wgl.c defines DllMain + stw_init(&stw_winsys) + the
++# GALLIUM_DRIVER driver-selection layer (zink/llvmpipe/d3d12/softpipe). It must
++# be part of the final opengl32.dll target: MSVC libcmt supplies a default
++# DllMain, so a DLL that merely links this archive can build fine while never
++# initialising stw and never pulling any gallium driver (observed 03:07 build:
++# 0 zink strings, 16.0MB). Exported so libgl-gdi can compile it into the DLL.
++wgl_common_sources = files('wgl.c')
++
++libgallium_wgl = static_library(
++  'gallium_wgl_combined',
++  wgl_common_sources,
+   include_directories : [
+     inc_include, inc_src, inc_mesa, inc_gallium, inc_gallium_aux, inc_wgl, inc_gallium_winsys, inc_gallium_winsys_sw, inc_gallium_drivers,
+   ],
+-  link_whole : [libwgl],
+   link_with : [
+     libgallium, libglsl, libmesa, libwsgdi, libglapi_bridge, libglapi, libgalliumvl_stub,
+   ],
+@@ -27,7 +36,6 @@ libgallium_wgl = shared_library(
+     driver_d3d12, driver_zink, winsys_d3d12_wgl
+   ],
+   link_args : gallium_wgl_link_args,
+-  name_prefix : '',
+   install : true,
+ )
+ libgallium_wgl_build_dir = meson.current_build_dir()

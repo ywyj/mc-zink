@@ -1,0 +1,18 @@
+diff --git a/src/gallium/drivers/zink/zink_context.c b/src/gallium/drivers/zink/zink_context.c
+index 8b76013..45a03e4 100644
+--- a/src/gallium/drivers/zink/zink_context.c
++++ b/src/gallium/drivers/zink/zink_context.c
+@@ -6202,7 +6202,12 @@ zink_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
+    if (is_compute_only || zink_debug & ZINK_DEBUG_NOREORDER)
+       ctx->no_reorder = true;
+ 
+-   if (!(flags & PIPE_CONTEXT_PREFER_THREADED) || flags & PIPE_CONTEXT_COMPUTE_ONLY) {
++   /* [dsh-mesaopt] A/B diagnostic: ZINK_TC_DISABLE=1 forces a direct (non-threaded)
++    * pipe_context, isolating u_threaded_context wrapper cost from zink's own
++    * threaded_submit (GALLIUM_THREAD=0 disables both, so it cannot isolate tc alone).
++    * Default off = upstream behavior. */
++   if (!(flags & PIPE_CONTEXT_PREFER_THREADED) || flags & PIPE_CONTEXT_COMPUTE_ONLY ||
++       debug_get_bool_option("ZINK_TC_DISABLE", false)) {
+       return &ctx->base;
+    }
+ 

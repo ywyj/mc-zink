@@ -1,0 +1,21 @@
+--- a/src/gallium/drivers/zink/zink_screen.c
++++ b/src/gallium/drivers/zink/zink_screen.c
+@@ -1933,12 +1933,14 @@
+    /* handle any outstanding acquire submits (not just from above) */
+    if (ctx->swapchain || ctx->needs_present) {
+       ctx->bs->has_work = true;
+       pctx->flush(pctx, NULL, PIPE_FLUSH_END_OF_FRAME);
+-      if (ctx->last_batch_state && screen->threaded_submit) {
+-         struct zink_batch_state *bs = ctx->last_batch_state;
+-         util_queue_fence_wait(&bs->flush_completed);
+-      }
++      /* [dsh-mesaopt ZOO2 P3] upstream waited here for the just-submitted batch on
++       * flush_completed before queueing the present.  That wait was measured as
++       * pure overhead in zoo1 (MESA_ZINK_NO_FB_WAIT=1: +3.9%/+3.4% fps, twice),
++       * and present ordering is still guaranteed by the kopper present queue, so
++       * this zoo2 variant removes it unconditionally (no env switch, default on).
++       */
+    }
+    res->use_damage = false;
+ 
+    /* always verify that this was acquired */

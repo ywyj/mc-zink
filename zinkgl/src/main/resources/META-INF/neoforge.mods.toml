@@ -1,0 +1,12 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+
+[[mods]]
+modId="zinkgl"
+version="${version}"
+displayName="Zink GL Preloader"
+description="Preloads the bundled Mesa opengl32.dll so the game renders through Vulkan (zink) even when launched directly from the launcher."
+
+[[mixins]]
+config="zinkgl.mixins.json"

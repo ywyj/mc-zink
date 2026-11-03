@@ -1,0 +1,26 @@
+{
+ "final": {
+  "src/gallium/drivers/zink/zink_batch.c": "CFF561DA36179DC454A9936DB98F11E95F331B5531D42D6E4F05B1FBF7A7694B",
+  "src/gallium/drivers/zink/zink_kopper.c": "E265EDF4C53BC7616BF29DA7B29D87B46E764E8F78449B2F5E3C7C153938A54D",
+  "src/gallium/drivers/zink/zink_screen.c": "478BA3A6D25899BBABA8C874937CAEA69149FC46E50E3AE6D3FE33B0C8E51B6D",
+  "src/gallium/drivers/zink/zink_zoo.h": "E1A42683D9FF001F12492C422F115A67090802D9046EF76020CA27CD5956ED50"
+ },
+ "patch_order": [
+  "infra",
+  "p1",
+  "p2",
+  "p3"
+ ],
+ "patches": [
+  "0001-zoo1-infra.patch",
+  "0002-p1-kopper-sync-present.patch",
+  "0003-p2-batch-window.patch",
+  "0004-p3-no-fb-wait.patch"
+ ],
+ "pre": {
+  "src/gallium/drivers/zink/zink_batch.c": "B8AEA341074B4D0FC121F435CBE5A0A2F157C3133B47DDBD66DB510DE6E29BA0",
+  "src/gallium/drivers/zink/zink_kopper.c": "3F9D37BF2A100D78CA5586314C588EC2B51A3767760EA02FA6EA328F59E7A007",
+  "src/gallium/drivers/zink/zink_screen.c": "7D49B1570AB2931897563930155B33FA2D1165B550BDB288A1236DFFFD34F8F6"
+ },
+ "tree": "src/mesa-26.2.5"
+}

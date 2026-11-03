@@ -1,0 +1,8 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="MIT"
+[[mods]]
+modId="vkglshim"
+version="0.1.0"
+displayName="VkGlShim (GL -> VulkanMod 过渡层)"
+description="为在 VulkanMod 下直接调用 LWJGL GL 的模组（Veil/Sable/Xaero/ldlib2）提供状态化替身。"

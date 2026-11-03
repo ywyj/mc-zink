@@ -1,0 +1,33 @@
+{
+  "zoom": {
+    "enabled": true,
+    "zoomFactor": 4.0,
+    "smoothSpeed": 0.35,
+    "mouseSensitivityScale": true,
+    "key": "key.dshopt.zoom"
+  },
+  "fog": {
+    "enabled": true,
+    "terrainFog": true,
+    "waterFog": true,
+    "lavaFog": true,
+    "distanceMultiplier": 1.0
+  },
+  "view": {
+    "enabled": true,
+    "hurtCameraShake": true,
+    "underwaterDistortion": true,
+    "vignette": true
+  },
+  "clearWater": {
+    "enabled": false,
+    "disableWaterFog": true,
+    "disableUnderwaterOverlay": true
+  },
+  "clearGlass": {
+    "enabled": false
+  },
+  "debug": {
+    "logOnce": true
+  }
+}

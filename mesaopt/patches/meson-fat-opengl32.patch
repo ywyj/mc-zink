@@ -1,0 +1,39 @@
+diff --git "a/src/gallium/targets/libgl-gdi/meson.build.orig" "b/src/gallium/targets/libgl-gdi/meson.build"
+index b65a7c4..0e5f3ef 100644
+--- "a/src/gallium/targets/libgl-gdi/meson.build.orig"
++++ "b/src/gallium/targets/libgl-gdi/meson.build"
+@@ -10,18 +10,30 @@ opengl32_def = custom_target(
+   command : gen_vs_module_defs_normal_command,
+ )
+ 
++# [dsh-mesaopt] Fat opengl32.dll: same link set as the upstream libgallium_wgl.dll
++# target, but built directly into opengl32.dll, so the result is a single
++# self-contained DLL (no libgallium_wgl.dll dependency).
++#
++# wgl.c (targets/wgl) is compiled in directly: it is the only DllMain that calls
++# stw_init(&stw_winsys) and it owns the GALLIUM_DRIVER -> zink driver selection.
++# Without it the DLL links (libcmt's default DllMain) but has no gallium driver
++# at all: 03:07 build had 0 "GALLIUM_DRIVER"/"vkCreatePipelineCache" strings.
+ libopengl32 = shared_library(
+   'opengl32',
+-  ['stw_wgl.c'],
++  ['stw_wgl.c', wgl_common_sources],
+   vs_module_defs : opengl32_def,
+   include_directories : [
+-    inc_include, inc_wgl, inc_src, inc_gallium,
++    inc_include, inc_wgl, inc_src, inc_gallium, inc_gallium_aux, inc_gallium_winsys, inc_gallium_winsys_sw, inc_gallium_drivers, inc_mesa,
++  ],
++  link_whole : [
++    libwgl,
+   ],
+   link_with : [
+-    libgallium_wgl, libglapi_bridge
++    libgallium_wgl, libgallium, libglsl, libmesa, libwsgdi, libglapi_bridge, libglapi, libgalliumvl_stub,
+   ],
+   dependencies : [
+-    idep_mesautil
++    dep_ws2_32, idep_nir, idep_mesautil, driver_swrast,
++    driver_d3d12, driver_zink, winsys_d3d12_wgl,
+   ],
+   c_args : ['-D_GDI32_'],
+   link_args : opengl32_link_args,

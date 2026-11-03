@@ -1,0 +1,119 @@
+# WIP / NOT APPLIED / NOT BUILT — design-only patch for U2 (zoo9)
+# Deliberately not compiled: the change defers unsync staging copies and reworks a
+# cross-thread fence protocol (flush_fence/unsync_fence between driver thread and
+# flush/submit thread); that needs more validation than the current window allows.
+# The code below is the concrete implementation plan with exact hook points.
+
+diff --git a/src/gallium/drivers/zink/zink_types.h b/src/gallium/drivers/zink/zink_types.h
+--- a/src/gallium/drivers/zink/zink_types.h
++++ b/src/gallium/drivers/zink/zink_types.h
+@@ struct zink_screen
++   /* [dsh-mesaopt ZOO9-WIP] env MESA_ZINK_UPLOAD_COALESCE_COPIES (default 0) */
++   bool upload_coalesce_copies;
+@@ struct zink_context
++   /* [dsh-mesaopt ZOO9-WIP] deferred unsync staging copies (buffer uploads only) */
++   struct util_dynarray upload_pending;   /* struct zoo9_pending_copy */
++   simple_mtx_t upload_pending_lock;
+
+diff --git a/src/gallium/drivers/zink/zink_screen.c b/src/gallium/drivers/zink/zink_screen.c
+--- a/src/gallium/drivers/zink/zink_screen.c
++++ b/src/gallium/drivers/zink/zink_screen.c
+@@ screen init env block
++   screen->upload_coalesce_copies = debug_get_bool_option("MESA_ZINK_UPLOAD_COALESCE_COPIES", false);
+
+diff --git a/src/gallium/drivers/zink/zink_context.c b/src/gallium/drivers/zink/zink_context.c
+--- a/src/gallium/drivers/zink/zink_context.c
++++ b/src/gallium/drivers/zink/zink_context.c
+@@ before zink_copy_buffer()
++struct zoo9_pending_copy {
++   struct pipe_resource *src, *dst;   /* refs held until executed */
++   unsigned dst_offset, src_offset, size;
++   bool can_unorder;
++};
++
++/* Execute all deferred unsync staging copies in ONE unsync cmdbuf window.
++ * Caller (flush_batch/end_batch path) must hold GL/driver ordering: the unsync
++ * command buffer is submitted BEFORE the main/reordered cmdbufs, so copies
++ * recorded here still execute before any draw of the same batch.
++ * Fence protocol: original code did wait(flush_fence)+reset(unsync_fence)+
++ * signal(unsync_fence) PER COPY; here it is done ONCE per drain.
++ */
++void zink_upload_coalesce_drain(struct zink_context *ctx)
++{
++   struct zink_screen *screen = zink_screen(ctx->base.screen);
++   if (!screen->upload_coalesce_copies)
++      return;
++   simple_mtx_lock(&ctx->upload_pending_lock);
++   if (!util_dynarray_num_elements(&ctx->upload_pending, struct zoo9_pending_copy)) {
++      simple_mtx_unlock(&ctx->upload_pending_lock);
++      return;
++   }
++   util_queue_fence_wait(&ctx->flush_fence);
++   util_queue_fence_reset(&ctx->unsync_fence);
++   ctx->bs->has_unsync = true;
++   util_dynarray_foreach(&ctx->upload_pending, struct zoo9_pending_copy, rec) {
++      zink_copy_buffer_raw(ctx, zink_resource(rec->dst), zink_resource(rec->src),
++                           rec->dst_offset, rec->src_offset, rec->size, true, rec->can_unorder);
++      pipe_resource_reference(&rec->src, NULL);
++      pipe_resource_reference(&rec->dst, NULL);
++   }
++   util_dynarray_clear(&ctx->upload_pending);
++   util_queue_fence_signal(&ctx->unsync_fence);
++   simple_mtx_unlock(&ctx->upload_pending_lock);
++}
+@@ zink_copy_buffer() unsync entry
+-   if (unsync) {
+-      util_queue_fence_wait(&ctx->flush_fence);
+-      util_queue_fence_reset(&ctx->unsync_fence);
+-   }
++   if (unsync && screen->upload_coalesce_copies) {
++      /* defer: refs keep staging/dst alive until the drain executes the copy */
++      struct zoo9_pending_copy rec = {0};
++      pipe_resource_reference(&rec.src, &src->base.b);
++      pipe_resource_reference(&rec.dst, &dst->base.b);
++      rec.dst_offset = dst_offset; rec.src_offset = src_offset; rec.size = size;
++      simple_mtx_lock(&ctx->upload_pending_lock);
++      util_dynarray_append(&ctx->upload_pending, struct zoo9_pending_copy, rec);
++      simple_mtx_unlock(&ctx->upload_pending_lock);
++      /* make the next zink_flush/flush_batch see work and drain before submit */
++      ctx->bs->has_unsync = true;
++      return;
++   }
++   if (unsync) {
++      util_queue_fence_wait(&ctx->flush_fence);
++      util_queue_fence_reset(&ctx->unsync_fence);
++   }
++   ... original body executes copy ...
+
+diff --git a/src/gallium/drivers/zink/zink_context.c (hooks)
+--- a/src/gallium/drivers/zink/zink_context.c
++++ b/src/gallium/drivers/zink/zink_context.c
+@@ flush_batch() top
++   /* [dsh-mesaopt ZOO9-WIP] execute deferred uploads before the batch is ended */
++   zink_upload_coalesce_drain(ctx);
+@@ zink_context_destroy() before flush/finish
++   zink_upload_coalesce_drain(ctx);
+@@ zink_context_create() init / destroy fini
++   util_dynarray_init(&ctx->upload_pending, NULL);
++   simple_mtx_init(&ctx->upload_pending_lock, mtx_plain);
++   util_dynarray_fini(&ctx->upload_pending);
++   simple_mtx_destroy(&ctx->upload_pending_lock);
+
+diff --git a/src/gallium/drivers/zink/zink_batch.c b/src/gallium/drivers/zink/zink_batch.c
+--- a/src/gallium/drivers/zink/zink_batch.c
++++ b/src/gallium/drivers/zink/zink_batch.c
+@@ zink_end_batch() entry (belts and braces: drain before handing the batch off)
++   zink_upload_coalesce_drain(ctx);
+
+# Required follow-up before this can be built:
+# 1) move the original body of zink_copy_buffer into zink_copy_buffer_raw(..., unsync, can_unorder)
+#    parameterized so the drain can reuse it with the existing barrier logic;
+# 2) declare extern void zink_upload_coalesce_drain(struct zink_context *ctx) in a header;
+# 3) verify the cross-thread window: uploads may be recorded on the u_threaded_context
+#    driver thread while flush_batch can be entered from the GL/frontend thread;
+#    the lock serialises the list but the flush_fence/unsync_fence protocol semantics
+#    must be re-audited (original code pays a wait per copy precisely to order against
+#    an in-flight flush; the drained version pays it once per batch);
+# 4) local gl_smoke does not exercise big uploads -> rotation-scene real-machine A/B is
+#    the only meaningful validation; any wrong chunk/entity/lightmap data means a
+#    lifetime/ordering bug.

@@ -1,0 +1,18 @@
+diff --git "a/meson.build" "b/meson.build"
+index 5f19ef9..2dc87b3 100644
+--- "a/meson.build"
++++ "b/meson.build"
+@@ -1170,9 +1170,9 @@ if with_split_debug.allowed() and get_option('debug')
+   add_project_link_arguments('-Wl,--gdb-index', language : ['c', 'cpp'])
+ endif
+ 
+-with_shader_cache = get_option('shader-cache') \
+-  .require(host_machine.system() != 'windows', error_message : 'Shader Cache does not currently work on Windows') \
+-  .allowed()
++# [dsh-mesaopt] Windows has a native disk cache backend now (src/util/disk_cache_os.c),
++# so the upstream "does not currently work on Windows" restriction is lifted here.
++with_shader_cache = get_option('shader-cache').allowed()
+ 
+ if with_shader_cache
+   pre_args += '-DENABLE_SHADER_CACHE'
+

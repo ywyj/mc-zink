@@ -1,0 +1,24 @@
+# AMD 档（RDNA2/3 独显，或 Radeon 核显）— config/super_resolution/config.toml 最小覆盖片段
+# 用法见 profiles/README.md；未列出的键保持原值。
+# 结论：FSR1（GL 着色器）任何 AMD GPU 都可用；sgsr1/sgsr2 是 GL compute 路径，可试但需实测；
+#       FfxFSR(FSR3)/FSR4 走 Vulkan/D3D12 互操作，zink 下与 NVIDIA 同因（GL 侧外部内存）受限 → 不要默认启用；
+#       Reflex 是 NVIDIA 专有，AMD 必须把 low_latency 关掉以免无意义初始化。
+upscale_algo = "fsr1"
+upscale_ratio = 1.5
+sharpness = 1.0
+internal_texture_format = "AUTO"
+enable_upscale = true
+
+[presentation]
+backend = "VULKAN"
+
+[frame_generation]
+mode = "OFF"
+provider = "superresolution:auto"
+backend = "wisteria:streamline"
+
+[low_latency]
+mode = "OFF"
+
+[low_latency.nv_reflex]
+mode = "OFF"

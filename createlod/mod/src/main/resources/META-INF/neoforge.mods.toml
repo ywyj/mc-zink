@@ -1,0 +1,47 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "MIT"
+issueTrackerURL = "https://github.com/local/createlod"
+
+${mixins_block}
+
+[[mods]]
+modId = "createlod"
+version = "${version}"
+displayName = "CreateLOD (DSH)"
+authors = "DSH"
+description = '''
+Client-side render-level-of-detail for Create 6.x kinetic blocks on Flywheel 1.0.x.
+Blocks whose rotating visual is fully hidden by their own casing / by opaque neighbours
+(encased shafts, window-covered encased cogwheels, buried kinetic parts) are not
+instantiated at all. Kinetic logic (tick / rotation / networks) is untouched.
+Zero visual difference is the hard requirement; distance-based LOD is opt-in/configurable.
+'''
+
+[[dependencies.createlod]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.1,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.createlod]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1,1.22)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.createlod]]
+modId = "flywheel"
+type = "optional"
+versionRange = "[1.0,2.0)"
+ordering = "NONE"
+side = "CLIENT"
+
+[[dependencies.createlod]]
+modId = "create"
+type = "optional"
+versionRange = "[6.0,7.0)"
+ordering = "NONE"
+side = "CLIENT"

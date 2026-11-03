@@ -1,0 +1,16 @@
+# 有光影组合（Iris 开启 + Complementary/Photon）— config/super_resolution/config.toml 最小覆盖片段
+# 关键：光影包与 SR 同时启用时必须保持这两个兼容开关为 true，且 presentation.backend=VULKAN。
+compat_shader_compiler = true
+enable_unstable_incompatible_shader_support = true
+enable_iris_extension = false
+auto_hide_shaderpack_disabled_algorithms = false
+inject_post_chain_blacklist = []
+flip_vk_gl_interop_resources_y = false
+
+[frame_generation]
+mode = "OFF"
+
+[debug]
+enable_debug = false
+enable_present_indicator = false
+enable_detailed_profiling = false

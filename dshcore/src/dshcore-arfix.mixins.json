@@ -1,0 +1,12 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "com.dsh.dshcore.mixin.arfix",
+  "compatibilityLevel": "JAVA_21",
+  "injectors": {
+    "defaultRequire": 0
+  },
+  "mixins": [
+    "ArTextureNoReadbackMixin"
+  ]
+}

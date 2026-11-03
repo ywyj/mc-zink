@@ -1,0 +1,8 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+[[mods]]
+modId="zinkinfo"
+version="${version}"
+displayName="Zink Info"
+description="Logs the real OpenGL renderer/vendor/version to config/zinkinfo.txt"

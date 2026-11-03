@@ -1,0 +1,110 @@
+From 32658eec43ad7e5c0b1a54feee33576795972e9d Mon Sep 17 00:00:00 2001
+From: Mike Blumenkrantz <michael.blumenkrantz@gmail.com>
+Date: Mon, 12 Oct 2026 18:35:37 -0400
+Subject: [PATCH] tc: stop asking the driver about busy buffers after 8 busy
+ replies
+
+is_resource_busy can cost a syscall per query (a zero-timeout
+vkWaitSemaphores on zink). after TC_MAX_BUSY_REPLIES busy replies,
+assume busy until the driver flushes. a wrong busy costs an
+invalidation or a synchronized map
+
+viewperf maya 1 / 2 / 4 on RX 7900 XT, fps:
+- zink: 366.2 / 1962.0 / 496.1 -> 396.1 / 2009.9 / 548.0
+- radeonsi: 398.5 / 2235.7 / 575.0 -> 411.1 / 2240.8 / 578.5
+
+Generated-by: LLM
+Part-of: <https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/45178>
+---
+ .../auxiliary/util/u_threaded_context.c       | 24 ++++++++++++++++++-
+ .../auxiliary/util/u_threaded_context.h       |  9 ++++++-
+ 2 files changed, 31 insertions(+), 2 deletions(-)
+
+diff --git a/src/gallium/auxiliary/util/u_threaded_context.c b/src/gallium/auxiliary/util/u_threaded_context.c
+index e20b1a8ee474..faa5c055914c 100644
+--- a/src/gallium/auxiliary/util/u_threaded_context.c
++++ b/src/gallium/auxiliary/util/u_threaded_context.c
+@@ -1103,6 +1103,11 @@ tc_is_buffer_on_busy_list(const struct threaded_context *tc, const struct thread
+    return false;
+ }
+ 
++/* The number of "busy" replies from is_resource_busy after which the driver isn't asked again until
++ * it flushes.
++ */
++#define TC_MAX_BUSY_REPLIES 8
++
+ static bool
+ tc_is_buffer_busy(struct threaded_context *tc, struct threaded_resource *tbuf,
+                   unsigned map_usage)
+@@ -1113,9 +1118,20 @@ tc_is_buffer_busy(struct threaded_context *tc, struct threaded_resource *tbuf,
+    if (tc_is_buffer_on_busy_list(tc, tbuf))
+       return true;
+ 
++   /* Asking the driver can cost a syscall per query. Once it has replied "busy" a few times, assume
++    * that buffers stay busy until the driver submits more work. A wrong "busy" only costs
++    * an invalidation or a synchronized mapping.
++    */
++   if (p_atomic_read_relaxed(&tc->num_busy_replies) >= TC_MAX_BUSY_REPLIES)
++      return true;
++
+    /* The buffer isn't referenced by any unflushed batch: we can safely ask to the driver whether
+     * this buffer is busy or not. */
+-   return tc->options.is_resource_busy(tc->pipe->screen, tbuf->latest, map_usage);
++   if (!tc->options.is_resource_busy(tc->pipe->screen, tbuf->latest, map_usage))
++      return false;
++
++   p_atomic_inc(&tc->num_busy_replies);
++   return true;
+ }
+ 
+ /**
+@@ -4063,6 +4079,10 @@ tc_flush(struct pipe_context *_pipe, struct pipe_fence_handle **fence,
+    bool async = flags & (PIPE_FLUSH_DEFERRED | PIPE_FLUSH_ASYNC);
+    bool deferred = (flags & PIPE_FLUSH_DEFERRED) > 0;
+ 
++   /* Drivers that don't report their flushes are asked again after every flush request. */
++   if (!tc->options.driver_calls_flush_notify)
++      p_atomic_set(&tc->num_busy_replies, 0);
++
+    if (!deferred || !fence) {
+       tc->in_renderpass = false;
+       if (tc->renderpass_info_recording)
+@@ -5933,6 +5953,8 @@ void tc_driver_internal_flush_notify(struct threaded_context *tc)
+    if (!tc)
+       return;
+ 
++   p_atomic_set(&tc->num_busy_replies, 0);
++
+    /* Signal fences set by tc_batch_execute. */
+    for (unsigned i = 0; i < tc->num_signal_fences_next_flush; i++)
+       util_queue_fence_signal(tc->signal_fences_next_flush[i]);
+diff --git a/src/gallium/auxiliary/util/u_threaded_context.h b/src/gallium/auxiliary/util/u_threaded_context.h
+index cba74ae85d09..a497ecab6ac7 100644
+--- a/src/gallium/auxiliary/util/u_threaded_context.h
++++ b/src/gallium/auxiliary/util/u_threaded_context.h
+@@ -166,7 +166,9 @@
+  * There are 1 driver callback and 1 TC callback:
+  *
+  * 1) is_resource_busy: It returns true when a resource is busy. If this is NULL,
+- *    the resource is considered always busy.
++ *    the resource is considered always busy. After it has returned true a few
++ *    times, the threaded context stops calling it and considers all buffers
++ *    busy until the driver flushes.
+  *
+  * 2) tc_driver_internal_flush_notify: If the driver set
+  *    driver_calls_flush_notify = true in threaded_context_create, it should
+@@ -661,6 +663,11 @@ struct threaded_context {
+    thrd_t driver_thread;
+ #endif
+ 
++   /* Number of "busy" replies from is_resource_busy since the driver last flushed. It's reset by
++    * the driver thread, so it's accessed atomically.
++    */
++   uint32_t num_busy_replies;
++
+    bool seen_tcs;
+    bool seen_tes;
+    bool seen_gs;
+-- 
+GitLab
+

@@ -1,0 +1,39 @@
+diff --git a/src/gallium/drivers/zink/zink_fence.c b/src/gallium/drivers/zink/zink_fence.c
+--- a/src/gallium/drivers/zink/zink_fence.c
++++ b/src/gallium/drivers/zink/zink_fence.c
+@@ -135,7 +135,9 @@
+    if (fence->completed)
+       return true;
+ 
+-   if (screen->threaded_submit) {
++   /* [dsh-mesaopt ZOO6] env-gated: the fence is already submitted (assert below), so
++    * waiting for the submit thread before the timeline wait is redundant. Default off. */
++   if (screen->threaded_submit && !screen->fence_no_submit_wait) {
+       int64_t abs_timeout = os_time_get_absolute_timeout(timeout_ns);
+       if (!util_queue_fence_wait_timeout(&bs->flush_completed, abs_timeout))
+          return false;
+diff --git a/src/gallium/drivers/zink/zink_types.h b/src/gallium/drivers/zink/zink_types.h
+--- a/src/gallium/drivers/zink/zink_types.h
++++ b/src/gallium/drivers/zink/zink_types.h
+@@ -1380,6 +1380,9 @@
+    bool threaded_submit;
+    bool is_cpu;
+    bool abort_on_hang;
++   /* [dsh-mesaopt ZOO6] env-gated experiment: skip the submit-thread flush_completed
++    * wait in fence_wait() and wait directly on the timeline semaphore. Default off. */
++   bool fence_no_submit_wait;
+    bool frame_marker_emitted;
+    bool driver_name_is_inferred;
+    uint64_t curr_batch; //the current batch id
+diff --git a/src/gallium/drivers/zink/zink_screen.c b/src/gallium/drivers/zink/zink_screen.c
+--- a/src/gallium/drivers/zink/zink_screen.c
++++ b/src/gallium/drivers/zink/zink_screen.c
+@@ -3433,6 +3433,8 @@
+    else
+       screen->threaded_submit = screen->threaded;
+    screen->abort_on_hang = debug_get_bool_option("ZINK_HANG_ABORT", false);
++   /* [dsh-mesaopt ZOO6] env-gated fence_wait submit-thread wait skip (default off) */
++   screen->fence_no_submit_wait = debug_get_bool_option("MESA_ZINK_FENCE_NO_SUBMIT_WAIT", false);
+ 
+    u_trace_state_init();
+ 

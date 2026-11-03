@@ -1,0 +1,206 @@
+diff --git a/src/gallium/drivers/zink/zink_types.h b/src/gallium/drivers/zink/zink_types.h
+--- a/src/gallium/drivers/zink/zink_types.h
++++ b/src/gallium/drivers/zink/zink_types.h
+@@ -289,6 +289,8 @@
+    struct pipe_context *deferred_ctx;
+    /* multiple tc fences may point to a real fence */
+    struct zink_fence *fence;
++   /* [dsh-mesaopt Z1/Z2] zero-timeout poll counter for the deferred-flush fallback */
++   unsigned poll_count;
+    /* for use with semaphore/imported fences */
+    VkSemaphore sem;
+ };
+@@ -1380,6 +1382,27 @@
+    bool threaded_submit;
+    bool is_cpu;
+    bool abort_on_hang;
++   /* ---- [dsh-mesaopt Z0] fence-poll instrumentation / tuning, env-gated, default = original behavior ---- */
++   bool poll_no_flush;          /* ZINK_POLL_NO_FLUSH: don't force-flush on timeout=0 poll */
++   bool fence_stats;            /* ZINK_FENCE_STATS: print counters every 4096 finish calls */
++   unsigned poll_flush_every;   /* ZINK_POLL_FLUSH_EVERY: flush after N polls of the same fence */
++   unsigned poll_sem_every;     /* ZINK_POLL_SEM_EVERY: real vkWaitSemaphores every N polls */
++   unsigned wait_sem_counter;
++   struct {
++      uint64_t finish_calls;      /* all zink_fence_finish calls */
++      uint64_t polls_zero;        /* timeout==0 calls */
++      uint64_t deferred_flush;    /* poll took the deferred pctx->flush path */
++      uint64_t deferred_skipped;  /* Z1: poll skipped the deferred flush */
++      uint64_t deferred_ns;       /* time inside pctx->flush from the poll path */
++      uint64_t tc_flush;          /* threaded_context_flush calls */
++      uint64_t tc_flush_ns;
++      uint64_t fence_wait;        /* fence_wait() calls */
++      uint64_t fence_wait_ns;
++      uint64_t wait_sem_calls;    /* real VKSCR(WaitSemaphores) calls */
++      uint64_t wait_sem_ns;
++      uint64_t wait_sem_skipped;  /* Z3a: skipped zero-timeout waits */
++      uint64_t stats_last_ns;
++   } fence_stat;
+    bool frame_marker_emitted;
+    bool driver_name_is_inferred;
+    uint64_t curr_batch; //the current batch id
+diff --git a/src/gallium/drivers/zink/zink_screen.c b/src/gallium/drivers/zink/zink_screen.c
+--- a/src/gallium/drivers/zink/zink_screen.c
++++ b/src/gallium/drivers/zink/zink_screen.c
+@@ -49,6 +49,7 @@
+ #include "util/u_debug.h"
+ #include "util/u_dl.h"
+ #include "util/os_file.h"
++#include "util/os_time.h"
+ #include "util/u_memory.h"
+ #include "util/u_screen.h"
+ #include "util/u_string.h"
+@@ -2584,7 +2585,24 @@
+    bool success = false;
+    if (screen->device_lost)
+       return true;
++   /* [dsh-mesaopt Z3a] rate-limit zero-timeout driver polls; timeout>0 path unchanged.
++    * Returning false means "not signaled yet" which is what a skip means, so no
++    * false completion is ever reported. */
++   if (timeout == 0 && screen->poll_sem_every) {
++      if (++screen->wait_sem_counter < screen->poll_sem_every) {
++         if (screen->fence_stats)
++            screen->fence_stat.wait_sem_skipped++;
++         return false;
++      }
++      screen->wait_sem_counter = 0;
++   }
++   /* [dsh-mesaopt Z0-timing] measure the real KMD round trip (skips never reach here) */
++   uint64_t wait_sem_t0 = os_time_get_nano();
+    VkResult ret = VKSCR(WaitSemaphores)(screen->dev, &wi, timeout);
++   if (screen->fence_stats) {
++      screen->fence_stat.wait_sem_ns += os_time_get_nano() - wait_sem_t0;
++      screen->fence_stat.wait_sem_calls++;
++   }
+    success = zink_screen_handle_vkresult(screen, ret);
+ 
+    if (success)
+@@ -3434,6 +3452,11 @@
+       screen->threaded_submit = screen->threaded;
+    screen->abort_on_hang = debug_get_bool_option("ZINK_HANG_ABORT", false);
+ 
++   /* [dsh-mesaopt Z0] fence-poll diagnostics / tuning, see zink_fence.c; all default off */
++   screen->poll_no_flush = debug_get_bool_option("ZINK_POLL_NO_FLUSH", false);
++   screen->poll_flush_every = (unsigned)debug_get_num_option("ZINK_POLL_FLUSH_EVERY", 0);
++   screen->poll_sem_every = (unsigned)debug_get_num_option("ZINK_POLL_SEM_EVERY", 0);
++   screen->fence_stats = debug_get_bool_option("ZINK_FENCE_STATS", false);
+ 
+    u_trace_state_init();
+ 
+diff --git a/src/gallium/drivers/zink/zink_fence.c b/src/gallium/drivers/zink/zink_fence.c
+--- a/src/gallium/drivers/zink/zink_fence.c
++++ b/src/gallium/drivers/zink/zink_fence.c
+@@ -29,8 +29,11 @@
+ #include "zink_screen.h"
+ 
+ #include "util/os_file.h"
++#include "util/os_time.h"
+ #include "util/set.h"
+ #include "util/u_memory.h"
++
++#include <stdio.h>
+ 
+ #ifdef _WIN32
+ #include <windows.h>
+@@ -94,6 +97,9 @@
+ static bool
+ tc_fence_finish(struct zink_context *ctx, struct zink_tc_fence *mfence, uint64_t *timeout_ns)
+ {
++   /* [dsh-mesaopt Z0-timing] */
++   struct zink_screen *screen = zink_screen(ctx->base.screen);
++
+    if (!util_queue_fence_is_signalled(&mfence->ready)) {
+       int64_t abs_timeout = os_time_get_absolute_timeout(*timeout_ns);
+       if (mfence->tc_token) {
+@@ -105,7 +111,12 @@
+           * be in flight in the driver thread, so the mfence
+           * may not be ready yet when this call returns.
+           */
++         uint64_t tc_t0 = os_time_get_nano();
+          threaded_context_flush(&ctx->base, mfence->tc_token, *timeout_ns == 0);
++         if (screen->fence_stats) {
++            screen->fence_stat.tc_flush_ns += os_time_get_nano() - tc_t0;
++            screen->fence_stat.tc_flush++;
++         }
+       }
+ 
+       /* this is a tc mfence, so we're just waiting on the queue mfence to complete
+@@ -164,11 +175,64 @@
+    if (screen->device_lost)
+       return true;
+ 
++   /* [dsh-mesaopt Z0-timing] counters + periodic dump; ZINK_FENCE_STATS=1 enables */
++   if (screen->fence_stats) {
++      screen->fence_stat.finish_calls++;
++      if (timeout_ns == 0)
++         screen->fence_stat.polls_zero++;
++      if ((screen->fence_stat.finish_calls & 0xFFF) == 0) {
++         uint64_t now_ns = os_time_get_nano();
++         uint64_t dt_ns = screen->fence_stat.stats_last_ns ? now_ns - screen->fence_stat.stats_last_ns : 0;
++         screen->fence_stat.stats_last_ns = now_ns;
++         fprintf(stderr,
++                 "ZINK_FENCE_STATS dt_ms=%llu finish_calls=%llu polls_zero=%llu "
++                 "deferred_flush=%llu deferred_skipped=%llu deferred_avg_us=%.2f "
++                 "tc_flush=%llu tc_flush_avg_us=%.2f "
++                 "fence_wait=%llu fence_wait_avg_us=%.2f "
++                 "wait_sem_calls=%llu wait_sem_skipped=%llu wait_sem_avg_us=%.2f\n",
++                 (unsigned long long)(dt_ns / 1000000),
++                 (unsigned long long)screen->fence_stat.finish_calls,
++                 (unsigned long long)screen->fence_stat.polls_zero,
++                 (unsigned long long)screen->fence_stat.deferred_flush,
++                 (unsigned long long)screen->fence_stat.deferred_skipped,
++                 screen->fence_stat.deferred_flush
++                    ? (double)screen->fence_stat.deferred_ns / screen->fence_stat.deferred_flush / 1000.0 : 0.0,
++                 (unsigned long long)screen->fence_stat.tc_flush,
++                 screen->fence_stat.tc_flush
++                    ? (double)screen->fence_stat.tc_flush_ns / screen->fence_stat.tc_flush / 1000.0 : 0.0,
++                 (unsigned long long)screen->fence_stat.fence_wait,
++                 screen->fence_stat.fence_wait
++                    ? (double)screen->fence_stat.fence_wait_ns / screen->fence_stat.fence_wait / 1000.0 : 0.0,
++                 (unsigned long long)screen->fence_stat.wait_sem_calls,
++                 (unsigned long long)screen->fence_stat.wait_sem_skipped,
++                 screen->fence_stat.wait_sem_calls
++                    ? (double)screen->fence_stat.wait_sem_ns / screen->fence_stat.wait_sem_calls / 1000.0 : 0.0);
++         fflush(stderr);
++      }
++   }
++
+    if (pctx && mfence->deferred_ctx == pctx) {
+       if (mfence->fence == ctx->deferred_fence) {
++         /* [dsh-mesaopt Z1] a zero-timeout poll is a status query, not a flush request;
++          * deferring the flush keeps the deferred batch accumulating.
++          * [dsh-mesaopt Z2] still flush after poll_flush_every polls of this fence as a
++          * liveness guard (0 = flush immediately -> original behavior). */
++         if (!timeout_ns && screen->poll_no_flush &&
++             ++mfence->poll_count < screen->poll_flush_every) {
++            if (screen->fence_stats)
++               screen->fence_stat.deferred_skipped++;
++            return false;
++         }
++         mfence->poll_count = 0;
++         if (screen->fence_stats) {
++            screen->fence_stat.deferred_flush++;
++         }
++         uint64_t flush_t0 = screen->fence_stats ? os_time_get_nano() : 0;
+          zink_context(pctx)->bs->has_work = true;
+          /* this must be the current batch */
+          pctx->flush(pctx, NULL, !timeout_ns ? PIPE_FLUSH_ASYNC : 0);
++         if (screen->fence_stats)
++            screen->fence_stat.deferred_ns += os_time_get_nano() - flush_t0;
+          if (!timeout_ns)
+             return false;
+       }
+@@ -200,6 +264,14 @@
+        (!fence->submitted && submit_diff))
+       return true;
+ 
++   /* [dsh-mesaopt Z0-timing] */
++   if (screen->fence_stats) {
++      uint64_t fw_t0 = os_time_get_nano();
++      screen->fence_stat.fence_wait++;
++      bool success = fence_wait(screen, fence, timeout_ns);
++      screen->fence_stat.fence_wait_ns += os_time_get_nano() - fw_t0;
++      return success;
++   }
+    return fence_wait(screen, fence, timeout_ns);
+ }
+ 

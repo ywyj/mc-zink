@@ -1,0 +1,76 @@
+From 5710cae12d148ce782db6126007a3d74a35d83d0 Mon Sep 17 00:00:00 2001
+From: Mike Blumenkrantz <michael.blumenkrantz@gmail.com>
+Date: Sun, 4 Oct 2026 14:09:44 -0400
+Subject: [PATCH] tc: scan constant buffer bindings only up to the highest
+ bound slot
+
+buffer invalidation scanned max_const_buffers slots for every shader
+stage. track the highest slot ever bound per stage instead, and remove
+the now unused tc->max_const_buffers
+
+viewperf maya 1 / 2 on RX 7900 XT, fps:
+- zink: 277.5 / 1623.6 -> 289-294 / 1679-1686
+- radeonsi: 397 / 2292 -> 401-407 / 2370-2407
+
+Generated-by: LLM
+Part-of: <https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/45178>
+---
+ src/gallium/auxiliary/util/u_threaded_context.c | 7 +++----
+ src/gallium/auxiliary/util/u_threaded_context.h | 2 +-
+ 2 files changed, 4 insertions(+), 5 deletions(-)
+
+diff --git a/src/gallium/auxiliary/util/u_threaded_context.c b/src/gallium/auxiliary/util/u_threaded_context.c
+index d2695892eeab..e20b1a8ee474 100644
+--- a/src/gallium/auxiliary/util/u_threaded_context.c
++++ b/src/gallium/auxiliary/util/u_threaded_context.c
+@@ -883,7 +883,7 @@ tc_add_shader_bindings_to_buffer_list(struct threaded_context *tc,
+                                       mesa_shader_stage shader)
+ {
+    tc_add_bindings_to_buffer_list(buffer_list, tc->const_buffers[shader],
+-                                  tc->max_const_buffers);
++                                  tc->num_const_buffers[shader]);
+    if (tc->seen_shader_buffers[shader]) {
+       tc_add_bindings_to_buffer_list(buffer_list, tc->shader_buffers[shader],
+                                      tc->max_shader_buffers);
+@@ -905,7 +905,7 @@ tc_rebind_shader_bindings(struct threaded_context *tc, uint32_t old_id,
+    unsigned ubo = 0, ssbo = 0, img = 0, sampler = 0;
+ 
+    ubo = tc_rebind_bindings(old_id, new_id, tc->const_buffers[shader],
+-                            tc->max_const_buffers);
++                            tc->num_const_buffers[shader]);
+    if (ubo)
+       *rebind_mask |= BITFIELD64_BIT(TC_BINDING_UBO_VS) << shader;
+    if (tc->seen_shader_buffers[shader]) {
+@@ -1797,6 +1797,7 @@ tc_set_constant_buffer(struct pipe_context *_pipe,
+    if (buffer) {
+       tc_bind_buffer(&tc->const_buffers[shader][index],
+                      &tc->buffer_lists[tc->next_buf_list], buffer);
++      tc->num_const_buffers[shader] = MAX2(tc->num_const_buffers[shader], index + 1);
+    } else {
+       tc_unbind_buffer(&tc->const_buffers[shader][index]);
+    }
+@@ -6044,8 +6045,6 @@ threaded_context_create(struct pipe_context *pipe,
+ 
+    /* If you have different limits in each shader stage, set the maximum. */
+    struct pipe_screen *screen = pipe->screen;;
+-   tc->max_const_buffers =
+-      screen->shader_caps[MESA_SHADER_FRAGMENT].max_const_buffers;
+    tc->max_shader_buffers =
+       screen->shader_caps[MESA_SHADER_FRAGMENT].max_shader_buffers;
+    tc->max_images =
+diff --git a/src/gallium/auxiliary/util/u_threaded_context.h b/src/gallium/auxiliary/util/u_threaded_context.h
+index 3b5c932e9618..cba74ae85d09 100644
+--- a/src/gallium/auxiliary/util/u_threaded_context.h
++++ b/src/gallium/auxiliary/util/u_threaded_context.h
+@@ -684,7 +684,7 @@ struct threaded_context {
+    int8_t batch_generation;
+ 
+    uint8_t num_vertex_buffers;
+-   unsigned max_const_buffers;
++   uint8_t num_const_buffers[MESA_SHADER_MESH_STAGES];
+    unsigned max_shader_buffers;
+    unsigned max_images;
+    unsigned max_samplers;
+-- 
+GitLab
+

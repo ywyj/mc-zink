@@ -1,0 +1,40 @@
+# ===== 构建产物 =====
+build/
+.gradle/
+dist/
+out/
+*.class
+
+# ===== 二进制与分发包（本仓库只发布源码与配置）=====
+*.jar
+*.dll
+*.exe
+*.zip
+*.mrpack
+*.dds
+
+# ===== 反编译产物与本地参考代码 =====
+.ref/
+decomp/
+*.orig
+
+# ===== Python 缓存 =====
+__pycache__/
+*.pyc
+*.pyo
+
+# ===== 日志与临时文件 =====
+logs/
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.iml
+
+# ===== 本地私密配置 =====
+*.local
+.env.local

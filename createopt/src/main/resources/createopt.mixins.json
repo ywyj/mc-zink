@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.dsh.createopt.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "EntityCullingMixin",
+    "BlockEntityCullingMixin",
+    "ParticleCullingMixin",
+    "EntityShadowMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

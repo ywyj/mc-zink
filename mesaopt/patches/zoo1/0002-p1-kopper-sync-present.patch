@@ -1,0 +1,26 @@
+--- a/src/gallium/drivers/zink/zink_kopper.c
++++ b/src/gallium/drivers/zink/zink_kopper.c
+@@ -25,6 +25,8 @@
+ #include "util/detect_os.h"
+ 
+ #include "zink_context.h"
++
++#include "zink_zoo.h"
+ 
+ #include "mesa/main/glcost.h"
+ 
+@@ -607,6 +609,14 @@
+    cdt->async = util_queue_is_initialized(&screen->flush_queue) &&
+                 cdt->type != KOPPER_WAYLAND;
+ 
++   /* [dsh-mesaopt ZOO P1/P4] MESA_ZINK_SYNC_PRESENT=1 forces synchronous
++    * present: no present job is queued to the submit thread and acquires wait
++    * for present completion instead of racing ahead.  With the env unset the
++    * upstream assignment above is used unchanged.
++    */
++   if (zink_zoo_sync_present)
++      cdt->async = false;
++
+    *stride = cdt->stride;
+    return cdt;
+ 

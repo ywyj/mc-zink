@@ -1,0 +1,20 @@
+# DSH-Zink SR 实验版（X2 帧生成）覆盖片段 v1.2.0
+# 适用：sr-fg 修复 Streamline interposer 签名校验后，且日志出现
+#       "Frame generation backend negotiation: fg=wisteria:..." 时。
+# 前置检查（logs/latest.log）：
+#   1) 不再出现 "slDLSSGSetOptions failed with result=31"
+#   2) 不再出现 "Failed to build DLSS-G constants"
+#   3) Iris 光影开启且 SR 日志显示 frame generation active
+# 若任一条不满足，回到 sr-nofg-stable.toml。
+
+[frame_generation]
+	mode = "X2"
+	provider = "superresolution:auto"
+	# 当前实例实测过的后端；NGX 后端在 zink 下 negotiation 失败，用 streamline
+	backend = "wisteria:streamline"
+
+[low_latency]
+	mode = "superresolution:nv_reflex"
+
+	[low_latency.nv_reflex]
+		mode = "ON"
