@@ -50,6 +50,14 @@ The outcome split in two.
 
 So the honest status is: **the features work; the performance target was not reached.** I am publishing it in the hope that someone able to maintain it will pick it up — the code, the measurements, and the failure records are all here, and the path is laid this far.
 
+### Why not VulkanMod
+
+A natural question at this point: if the goal is Vulkan, why not use VulkanMod directly?
+
+VulkanMod takes a different route: it replaces Minecraft's rendering backend with Vulkan outright, bypassing OpenGL. In theory that gives more direct Vulkan calls, but it also cuts off the ecosystem — a large share of Minecraft mods (especially shaders, rendering optimizations, and UI mods) are written against the OpenGL API and only know `gl*` calls. Making them run on VulkanMod requires per-mod adaptation, which is not something one person or a hobby project can cover.
+
+zink makes the opposite trade-off: it keeps the OpenGL API layer, so Minecraft and existing OpenGL mods run without code changes, and the OpenGL calls are translated to Vulkan underneath. The price is the structural overhead of that translation — the 12% gap above. In other words, zink was not chosen because it is faster, but because it does **not require the entire mod ecosystem to be rewritten**. That is the central trade-off of this project: give up some performance to keep the community's existing OpenGL mods usable.
+
 ### Technical motivations
 
 Three motivations:
